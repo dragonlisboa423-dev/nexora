@@ -1,0 +1,19 @@
+services:
+  saly:
+    build: .
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      SALY_MODEL_URL: http://ollama:11434
+      SALY_MODEL: smollm3:3b
+    volumes:
+      - saly-data:/data
+    depends_on:
+      - ollama
+  ollama:
+    image: ollama/ollama:0.11.10
+    volumes:
+      - ollama-models:/root/.ollama
+volumes:
+  saly-data:
+  ollama-models:
