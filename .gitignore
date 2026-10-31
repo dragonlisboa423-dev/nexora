@@ -12,3 +12,5 @@ coverage/
 .playwright/
 *.tsbuildinfo
 .ruff_cache/
+.tools/
+.venv.previous.*/

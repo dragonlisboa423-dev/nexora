@@ -6,7 +6,7 @@ Esta é uma fundação funcional em desenvolvimento. Memórias, documentos, aute
 
 ## Iniciar em Linux
 
-Requisitos: Python 3.12+, Node.js 24, npm e SQLite com FTS5 (incluído normalmente no Python). Para inferência em CPU, reserve inicialmente pelo menos 8 GB de RAM e espaço para os pesos; latência e consumo devem ser medidos no seu hardware. GPU não é obrigatória.
+Requisitos: Python **3.12**, Node.js 24, npm e SQLite com FTS5 (incluído normalmente no Python). Para inferência em CPU, reserve inicialmente pelo menos 8 GB de RAM e espaço para os pesos; latência e consumo devem ser medidos no seu hardware. GPU não é obrigatória.
 
 Na raiz do checkout:
 
@@ -19,6 +19,23 @@ bash scripts/start.sh
 O servidor atende na porta **8000**, em loopback por padrão, servindo frontend e API na mesma origem. Abra essa porta no seu navegador local, ou use o encaminhamento **privado** do Codespaces. Crie a conta proprietária no primeiro acesso, com senha de pelo menos 12 caracteres. Cadastros adicionais pela web ficam desabilitados após a primeira conta.
 
 Mantenha a porta privada durante o cadastro inicial. Para HTTPS configure `SALY_SECURE_COOKIE=1` em `.env`; para HTTP local mantenha `0`. Antes de disponibilizar fora da máquina, use HTTPS, proxy reverso, limites de corpo/timeout, armazenamento persistente e revisão de segurança da implantação. O serviço não oferece recuperação de senha nem provisionamento multiusuário pela interface nesta versão.
+
+## Instalação em Codespaces já existentes
+
+O Codespaces usa normalmente `/workspaces/nexora`; o ambiente Codex usa `/workspace/nexora`. Os scripts resolvem o checkout pelo próprio caminho e não dependem desses nomes.
+
+Se a instalação parar em `Failed to build ... pydantic-core`, atualize esta branch e repita o instalador:
+
+```bash
+cd /workspaces/nexora
+git pull --ff-only
+bash scripts/install.sh
+SALY_SECURE_COOKIE=1 bash scripts/start.sh
+```
+
+O instalador seleciona Python 3.12, atualiza pip e exige wheel binário para `pydantic-core`. Se Python 3.12 estiver ausente, usa uv para instalar um runtime local em `.tools/`, com verificação TLS e checksums. Caso uv também esteja ausente, ele é instalado em um ambiente de bootstrap isolado via PyPI. Isso requer rede para PyPI e distribuições oficiais Python do projeto python-build-standalone no GitHub.
+
+Uma `.venv` de outra versão ou quebrada é preservada como `.venv.previous.<data>.<pid>`, sem apagar seus arquivos. Banco, `.env` e fontes permanecem intactos. Dependências são instaladas na nova `.venv`. Opcionalmente aponte `SALY_PYTHON=/caminho/python3.12` para um interpretador existente. Se a rede impedir a preparação automática, use **Codespaces: Rebuild Container**, que aplica o devcontainer Python 3.12 já incluído no projeto.
 
 ## Conectar o modelo
 

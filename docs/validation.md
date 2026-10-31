@@ -7,7 +7,7 @@ O código foi implementado e testado na branch `feat/saly-intelligence`. A solic
 | Verificação | Resultado |
 |---|---|
 | `bash scripts/install.sh` | Passou, inclusive repetição com dependências já presentes, `npm ci`, build e migração idempotente |
-| `bash scripts/test.sh` | Build TypeScript/Vite passou; 24 testes pytest passaram |
+| `bash scripts/test.sh` | Build TypeScript/Vite passou; 26 testes pytest passaram |
 | SQLite FTS5, memória, edição/exclusão, versões e restauração | Passaram em integração |
 | Consolidação aprovada, arquivo e preservação dos originais | Passou em integração |
 | Banco após novo processo | Persistência comprovada |
@@ -50,3 +50,9 @@ Após disponibilizar runtime/pesos: execute `ollama show smollm3:3b`, confirme o
 TTS local e pacotes licenciados; interface de adaptador PCM; ativação por nome mediante consentimento; treinamento LoRA/QLoRA; resumo automático de históricos; consolidação semântica assistida pelo modelo; detecção geral de contradições e avaliação factual de respostas; referências por página de PDF (atualmente por trecho); relatórios narrativos e organização avançada de arquivos; recuperação de senha/gestão de contas; migração de bancos legados (não fornecidos em formato acessível). A consolidação manual aprovada e exportação de relatório de atividades JSON já estão disponíveis.
 
 Nenhuma função pendente é apresentada como ferramenta executável na interface. “Memória progressiva” significa armazenamento/recuperação autorizados; não treinamento dos pesos.
+
+## Correção do instalador para Codespaces existentes
+
+O instalador original seguia `python3` sem validar a versão. Após um relato de falha compilando `pydantic-core` (sem log suficiente para confirmar a causa exata), o instalador passou a selecionar Python 3.12, atualizar pip e exigir wheel para essa extensão. Ambientes virtuais incompatíveis são preservados, não excluídos.
+
+Regressões verificadas: rejeição de interpretador explicitamente incompatível; preservação de `.venv` quebrada; criação de Python 3.12; repetição sem novo backup; preservação de `.env` e dados. A rota sem Python 3.12 no PATH foi exercitada em diretório descartável: uv baixou CPython 3.12.15 e criou o ambiente com verificações de integridade/TLS habilitadas. O script completo de instalação/build também passou novamente. Isso não equivale a observar a execução no Codespaces do usuário.
