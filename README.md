@@ -50,6 +50,8 @@ bash scripts/connect-model.sh
 
 O comando pede a chave de forma oculta, verifica o modelo, recebe streaming, executa `calculate` com `2+2` e confirma que o modelo utiliza o resultado. Somente após sucesso grava a configuração no `.env`, com modo 0600 e sem sobrescrever outras configurações. Não imprime a chave e não envia documentos ou memórias nesse teste.
 
+Se o modelo configurado não estiver mais disponível, o comando lista os IDs retornados pelo catálogo atual da conta e pede a escolha pelo número. Escolha um modelo de conversa com suporte a ferramentas; modelos de voz/transcrição não servem para o agente. Não precisa digitar a chave novamente durante a escolha. Enter cancela sem salvar. A lista informa disponibilidade, não preço ou quota gratuita; o teste de streaming e ferramenta ainda precisa passar.
+
 Crie a chave em [Groq Console](https://console.groq.com/keys), usando a modalidade gratuita da sua conta e verificando suas quotas. **O Agente Saly já está incluído no código; não exige outra assinatura ou chave de agente.** As chamadas ao modelo continuam sujeitas à quota/plano do provedor; a aplicação não cadastra cartão nem ativa faturamento.
 
 Se você já configurou `GROQ_API_KEY` nos Secrets do Codespaces, ela é reconhecida para o endpoint Groq sem ser copiada para arquivo. `SALY_LLM_API_KEY` continua tendo prioridade. Para apenas verificar, sem gravar nada:
@@ -58,7 +60,7 @@ Se você já configurou `GROQ_API_KEY` nos Secrets do Codespaces, ela é reconhe
 bash scripts/connect-model.sh --check
 ```
 
-Para escolher explicitamente outro modelo anunciado pela conta, use `--model IDENTIFICADOR`. Não há substituição silenciosa de modelo. Pare o servidor antigo com Ctrl+C e reinicie depois da configuração:
+Para listar e escolher outro modelo mesmo quando o atual ainda existe, use `bash scripts/connect-model.sh --choose-model`. Para definir um ID explicitamente, use `--model IDENTIFICADOR`. Com `--check`, `--model` inválido ou sem terminal interativo, o comando mostra a lista sem trocar o modelo. Não há substituição silenciosa de modelo. Pare o servidor antigo com Ctrl+C e reinicie depois da configuração:
 
 ```bash
 SALY_SECURE_COOKIE=1 bash scripts/start.sh

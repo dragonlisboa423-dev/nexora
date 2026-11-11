@@ -132,6 +132,10 @@ def test_failed_private_connection_does_not_save_or_print_key(monkeypatch, tmp_p
     async def fail(provider):
         raise ProviderError(403, "Acesso não confirmado")
 
+    async def catalog(provider):
+        return [provider.model]
+
+    monkeypatch.setattr(Provider, "available_models", catalog)
     monkeypatch.setattr(connect_model, "verify_connection", fail)
     assert connect_model.main() == 1
     output = capsys.readouterr()
@@ -155,3 +159,99 @@ def test_groq_binding_not_sent_to_another_provider(monkeypatch):
     monkeypatch.setenv("SALY_LLM_BASE_URL", "https://other-provider.example/v1")
     p = Provider()
     assert p.key == "" and not p.configured
+
+
+def test_wizard_replaces_retired_model_only_after_explicit_choice_and_probe(
+    monkeypatch, tmp_path, capsys
+):
+    monkeypatch.setenv("SALY_LLM_API_KEY", "")
+    monkeypatch.setenv("GROQ_API_KEY", "")
+    monkeypatch.setenv("SALY_MODEL", "retired-model")
+    monkeypatch.setattr(connect_model, "ROOT", tmp_path)
+    monkeypatch.setattr("sys.argv", ["connect_model"])
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+    monkeypatch.setattr(connect_model.getpass, "getpass", lambda _: "test-private-key")
+    choices = iter(["0", "invalid", "1"])
+    monkeypatch.setattr("builtins.input", lambda _: next(choices))
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        assert request.headers["Authorization"] == "Bearer test-private-key"
+        if request.url.path.endswith("/models"):
+            return httpx.Response(200, json={"data": [{"id": "voice-model"}, {"id": "test-model"}]})
+        assert json.loads(request.content)["model"] == "test-model"
+        return model_transport(request)
+
+    monkeypatch.setattr(
+        Provider, "client", lambda _: httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    )
+    env = tmp_path / ".env"
+    env.write_text("SALY_DATA_DIR=./preserved\nSALY_MODEL=retired-model\n")
+    assert connect_model.main() == 0
+    values = dotenv_values(env)
+    assert values["SALY_MODEL"] == "test-model"
+    assert values["SALY_LLM_API_KEY"] == "test-private-key"
+    assert values["SALY_DATA_DIR"] == "./preserved"
+    assert env.stat().st_mode & 0o777 == 0o600
+    assert len(requests) == 4
+    output = capsys.readouterr()
+    assert "test-private-key" not in output.out + output.err
+    assert "1. test-model" in output.out and "2. voice-model" in output.out
+    assert "2+2=4" in output.out
+
+
+@pytest.mark.parametrize("mode", ["check", "explicit", "noninteractive", "cancel"])
+def test_missing_model_never_silently_substituted(monkeypatch, capsys, mode):
+    p = Provider()
+    p.key, p.model = "test-key", "retired-model"
+
+    async def catalog():
+        return ["available-model"]
+
+    async def unexpected_probe(provider):
+        pytest.fail("An unconfirmed model must never be used for inference")
+
+    def choice(_):
+        assert mode == "cancel", "This mode must not request interactive input"
+        return ""
+
+    monkeypatch.setattr(p, "available_models", catalog)
+    monkeypatch.setattr(connect_model, "verify_connection", unexpected_probe)
+    monkeypatch.setattr("sys.stdin.isatty", lambda: mode != "noninteractive")
+    monkeypatch.setattr("builtins.input", choice)
+    with pytest.raises(ProviderError):
+        asyncio.run(
+            connect_model.connect(p, check=mode == "check", explicit_model=mode == "explicit")
+        )
+    assert p.model == "retired-model"
+    assert "available-model" in capsys.readouterr().out
+
+
+def test_empty_catalog_does_not_prompt_or_probe(monkeypatch):
+    p = Provider()
+
+    async def catalog():
+        return []
+
+    monkeypatch.setattr(p, "available_models", catalog)
+    with pytest.raises(ProviderError, match="não anunciou modelos ativos"):
+        asyncio.run(connect_model.connect(p))
+
+
+def test_choose_model_allows_explicit_change_even_when_current_model_exists(monkeypatch):
+    p = Provider()
+    p.model = "existing-model"
+
+    async def catalog():
+        return ["existing-model", "new-model"]
+
+    async def probe(provider):
+        assert provider.model == "new-model"
+        return {"verified": True}
+
+    monkeypatch.setattr(p, "available_models", catalog)
+    monkeypatch.setattr(connect_model, "verify_connection", probe)
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda _: "2")
+    assert asyncio.run(connect_model.connect(p, choose_model=True)) == {"verified": True}

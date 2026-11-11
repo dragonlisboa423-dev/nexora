@@ -77,6 +77,54 @@ def test_invalid_stream_and_missing_key(monkeypatch):
         asyncio.run(run())
 
 
+def test_catalog_independent_of_stale_model_filters_inactive_and_malformed_ids(monkeypatch):
+    p = Provider()
+    p.key, p.model = "test-key", ""
+    catalog = {
+        "data": [
+            {"id": "org/text-model", "active": True},
+            {"id": "org/text-model"},
+            {"id": "inactive-model", "active": False},
+            {"id": "unsafe\x1b[2J"},
+            {"id": "line\nbreak"},
+            {"id": None},
+            {},
+            None,
+        ]
+    }
+    monkeypatch.setattr(
+        p,
+        "client",
+        lambda: httpx.AsyncClient(
+            transport=httpx.MockTransport(lambda _: httpx.Response(200, json=catalog))
+        ),
+    )
+    assert asyncio.run(p.available_models()) == ["org/text-model"]
+    p.model = "retired-model"
+    health = asyncio.run(p.health())
+    assert not health["model_ready"] and health["reason"] == "model_unavailable"
+
+
+@pytest.mark.parametrize(
+    "status,catalog", [(401, {"error": "private-response"}), (200, []), (200, {"data": None})]
+)
+def test_catalog_errors_preserve_configuration_and_hide_response(monkeypatch, status, catalog):
+    p = Provider()
+    p.key = "test-private-key"
+    monkeypatch.setattr(
+        p,
+        "client",
+        lambda: httpx.AsyncClient(
+            transport=httpx.MockTransport(lambda _: httpx.Response(status, json=catalog))
+        ),
+    )
+    with pytest.raises(ProviderError) as error:
+        asyncio.run(p.available_models())
+    assert "private" not in error.value.detail
+    health = asyncio.run(p.health())
+    assert not health["model_ready"] and "private" not in str(health)
+
+
 def test_ssrf_guards_block_internal_and_redirect_targets(monkeypatch):
     from backend.integrations import Integrations
 

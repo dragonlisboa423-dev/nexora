@@ -81,3 +81,7 @@ O teste adversarial comprova a barreira de aprovação, não a invulnerabilidade
 `backend/connect_model.py`, `backend/llm/connection.py` e `scripts/connect-model.sh` agora oferecem ativação por terminal privado com teste real do protocolo de modelo e ferramenta antes de salvar a chave. Configurações → Sistema inclui um diagnóstico autenticado do modelo/agente. O agente usa o mesmo provedor, sem assinatura adicional. O código respeita os controles de memória/documentos também nas ferramentas chamadas pelo modelo, impedindo que uma chamada estruturada ignore a recuperação desativada.
 
 Ainda é necessário fornecer uma chave válida da conta da proprietária no servidor onde a aplicação está rodando. Os segredos do Codespaces não são automaticamente compartilhados com este ambiente Codex. Crie/configure a chave em campo privado; não a envie em chat. Não houve ativação real sem essa credencial.
+
+## Modelo indisponível no catálogo
+
+O assistente de conexão agora consulta o catálogo atual mesmo se `SALY_MODEL` estiver vazio ou obsoleto. Quando o ID não aparece, apresenta os modelos ativos e permite escolher pelo número no terminal, mantendo a chave apenas em memória até concluir a verificação de streaming e ferramenta. `--choose-model` permite mudar uma seleção ainda disponível. `--check`, um `--model` explicitamente inválido e a execução sem terminal interativo apresentam o diagnóstico sem substituir o modelo. O catálogo não certifica capacidade de conversa/ferramentas ou preço; o teste completo continua obrigatório antes de gravar.

@@ -3,6 +3,7 @@
 import asyncio
 import json
 import os
+import re
 from urllib.parse import urlparse
 
 import httpx
@@ -29,12 +30,10 @@ class Provider:
         self.attempts = 3
 
     @property
-    def configured(self):
+    def valid_endpoint(self):
         parsed = urlparse(self.base)
         return bool(
-            self.key
-            and self.model
-            and parsed.scheme == "https"
+            parsed.scheme == "https"
             and parsed.hostname
             and parsed.username is None
             and parsed.password is None
@@ -42,8 +41,47 @@ class Provider:
             and not parsed.fragment
         )
 
+    @property
+    def configured(self):
+        return bool(self.key and self.model and self.valid_endpoint)
+
     def client(self):
         return httpx.AsyncClient(timeout=httpx.Timeout(90, connect=10), follow_redirects=False)
+
+    async def available_models(self):
+        """Read the live catalog independently of a stale or empty model setting."""
+        if not self.key or not self.valid_endpoint:
+            raise ProviderError(503, "Revise a chave e a URL HTTPS do provedor no servidor.")
+        try:
+            async with self.client() as client:
+                response = await client.get(
+                    self.base + "/models", headers={"Authorization": "Bearer " + self.key}
+                )
+            if response.status_code != 200:
+                detail = {
+                    401: "Chave recusada pelo provedor. Revise a credencial no servidor.",
+                    403: "Acesso ao provedor bloqueado pela rede ou pelas permissões da conta.",
+                    429: "Cota temporária do provedor atingida. Aguarde antes de testar novamente.",
+                }.get(response.status_code, "Não foi possível validar o provedor remoto.")
+                raise ProviderError(response.status_code, detail)
+            catalog = response.json()
+            if not isinstance(catalog, dict) or not isinstance(catalog.get("data"), list):
+                raise TypeError("invalid catalog")
+            # Only IDs are exposed, never arbitrary response text or control characters.
+            return sorted(
+                {
+                    item["id"]
+                    for item in catalog["data"]
+                    if isinstance(item, dict)
+                    and item.get("active") is not False
+                    and isinstance(item.get("id"), str)
+                    and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:/@+-]{0,199}", item["id"])
+                }
+            )
+        except (httpx.HTTPError, ValueError, TypeError) as error:
+            raise ProviderError(
+                503, "Não foi possível ler o catálogo de modelos do provedor. Tente novamente."
+            ) from error
 
     async def health(self):
         if not self.configured:
@@ -58,40 +96,25 @@ class Provider:
                 "reason": "missing_key" if not self.key else "invalid_configuration",
             }
         try:
-            async with self.client() as c:
-                r = await c.get(
-                    self.base + "/models", headers={"Authorization": "Bearer " + self.key}
-                )
-                if r.status_code != 200:
-                    detail = {
-                        401: "Chave recusada pelo provedor. Revise a credencial no servidor.",
-                        403: "Acesso ao provedor bloqueado pela rede ou pelas permissões da conta.",
-                        429: "Cota temporária do provedor atingida. Aguarde antes de testar novamente.",
-                    }.get(r.status_code, "Não foi possível validar o provedor remoto")
-                    return {
-                        "model_ready": False,
-                        "model": self.model,
-                        "provider": "remote",
-                        "configured": True,
-                        "reason": "provider_" + str(r.status_code),
-                        "detail": detail,
-                    }
-                ready = any(m["id"] == self.model for m in r.json().get("data", []))
+            ready = self.model in await self.available_models()
             return {
                 "model_ready": ready,
                 "model": self.model,
                 "provider": "remote",
                 "configured": True,
                 "reason": "ready" if ready else "model_unavailable",
-                "detail": "" if ready else "Modelo não anunciado pelo provedor; revise SALY_MODEL.",
+                "detail": ""
+                if ready
+                else "Modelo não anunciado pelo provedor. Execute bash scripts/connect-model.sh para escolher um modelo do catálogo atual.",
             }
-        except (httpx.HTTPError, ValueError, ProviderError):
+        except ProviderError as error:
             return {
                 "model_ready": False,
                 "model": self.model,
                 "provider": "remote",
                 "configured": True,
-                "detail": "Provedor inacessível, credencial recusada ou limite de uso. Verifique a configuração.",
+                "reason": "provider_" + str(error.status),
+                "detail": error.detail,
             }
 
     async def stream(self, messages, tools=None, *, tool_choice="auto", max_tokens=None):

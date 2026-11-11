@@ -17,6 +17,35 @@ from .llm.provider import Provider, ProviderError
 ROOT = Path(__file__).resolve().parents[1]
 
 
+async def connect(provider, *, check=False, explicit_model=False, choose_model=False):
+    models = await provider.available_models()
+    if not models:
+        raise ProviderError(503, "O provedor não anunciou modelos ativos para esta conta.")
+    if provider.model not in models or choose_model:
+        if provider.model not in models:
+            print(f"O modelo configurado {provider.model!r} não aparece no catálogo atual.")
+        print("Modelos ativos retornados pelo provedor:")
+        for index, model in enumerate(models, start=1):
+            print(f"  {index}. {model}")
+        print(
+            "Escolha um modelo de conversa com ferramentas; modelos de voz/transcrição não servem para este agente. A lista não confirma preço ou cota gratuita."
+        )
+        if check or explicit_model or not sys.stdin.isatty():
+            raise ProviderError(
+                503,
+                "Escolha um ID da lista com --model IDENTIFICADOR ou execute bash scripts/connect-model.sh em um terminal interativo. Nenhum modelo foi substituído.",
+            )
+        while True:
+            choice = input("Número do modelo (Enter cancela): ").strip()
+            if not choice:
+                raise ProviderError(503, "Seleção cancelada. Configuração preservada.")
+            if choice.isascii() and choice.isdecimal() and 1 <= int(choice) <= len(models):
+                provider.model = models[int(choice) - 1]
+                break
+            print("Digite um dos números da lista.")
+    return await verify_connection(provider)
+
+
 def persist_configuration(path, provider, new_key=None):
     path = Path(path)
     if path.is_symlink():
@@ -61,7 +90,14 @@ def main():
         "--model",
         help="Identificador de modelo disponível no provedor; não altera o valor silenciosamente",
     )
+    parser.add_argument(
+        "--choose-model",
+        action="store_true",
+        help="Listar e escolher outro modelo do catálogo atual",
+    )
     args = parser.parse_args()
+    if args.choose_model and (args.check or args.model):
+        parser.error("--choose-model não pode ser combinado com --check ou --model")
     provider = Provider()
     if args.model:
         provider.model = args.model
@@ -91,7 +127,14 @@ def main():
             return 2
         provider.key = new_key
     try:
-        result = asyncio.run(verify_connection(provider))
+        result = asyncio.run(
+            connect(
+                provider,
+                check=args.check,
+                explicit_model=args.model is not None,
+                choose_model=args.choose_model,
+            )
+        )
         if not args.check:
             persist_configuration(ROOT / ".env", provider, new_key)
     except (ProviderError, TimeoutError, ValueError, OSError) as error:
@@ -102,6 +145,9 @@ def main():
         )
         print("Conexão não concluída: " + detail, file=sys.stderr)
         return 1
+    except (EOFError, KeyboardInterrupt):
+        print("Conexão cancelada. Configuração preservada.", file=sys.stderr)
+        return 2
     print(f"Conexão verificada: {result['model']} · streaming · agente · cálculo confirmado 2+2=4.")
     if not args.check:
         print(
