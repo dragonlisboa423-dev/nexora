@@ -7,3 +7,11 @@
 data
 models
 frontend/dist
+.tools
+.venv.previous.*
+**/*.sqlite*
+**/*.db
+**/*.bak
+**/*.tsbuildinfo
+**/.ruff_cache
+backend/tests

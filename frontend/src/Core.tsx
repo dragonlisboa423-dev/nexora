@@ -10,13 +10,11 @@ import { Canvas, useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { SalyState } from "./api";
 
-const vertex = `varying vec3 p; uniform float t; uniform float energy;
-void main(){p=position; float wave=sin(position.y*9.+t)*cos(position.x*7.-t*.7)*.025;
-vec3 v=position+normal*wave*(1.+energy*4.);gl_Position=projectionMatrix*modelViewMatrix*vec4(v,1.);}`;
-const fragment = `varying vec3 p;uniform float t;uniform float energy;
-void main(){float f=pow(abs(sin(p.y*18.+sin(p.x*8.+t)*1.5+t*.4)),14.);
-float edge=pow(1.-abs(p.z),2.);vec3 c=mix(vec3(.02,.22,.29),vec3(.2,.95,.87),f*.7+edge*.4);
-gl_FragColor=vec4(c*(.65+energy*.8),.48+f*.38);}`;
+const vertex = `varying vec3 p; varying vec3 vNormal; varying vec3 vView; uniform float t; uniform float energy;
+float fluid(vec3 q){return sin(q.x*2.8+t*.38)*cos(q.y*3.4-t*.29)*sin(q.z*2.6+t*.23)+.45*sin(q.y*5.+q.x*3.-t*.42);}
+void main(){float displacement=fluid(position)*(.12+energy*.09);vec3 v=position*(1.+displacement);p=v;vNormal=normalize(normalMatrix*normal);vec4 mv=modelViewMatrix*vec4(v,1.);vView=normalize(-mv.xyz);gl_Position=projectionMatrix*mv;}`;
+const fragment = `varying vec3 p;varying vec3 vNormal;varying vec3 vView;uniform float t;uniform float energy;
+void main(){float fresnel=pow(1.-abs(dot(normalize(vNormal),vView)),2.2);float folds=sin(p.y*5.+sin(p.x*4.+t*.3)*1.3+sin(p.z*5.-t*.28));float vein=pow(.5+.5*sin(folds*3.+p.z*2.),5.);float caustic=pow(.5+.5*sin(p.x*5.+p.y*3.+sin(p.z*4.+t*.2)),12.);vec3 deep=vec3(.015,.12,.18);vec3 cyan=vec3(.12,.78,.78);vec3 light=vec3(.54,1.,.86);vec3 color=mix(deep,cyan,.2+vein*.48);color+=light*(fresnel*.75+caustic*.32)*(1.+energy*.6);gl_FragColor=vec4(color,.65+fresnel*.3);}`;
 function Organic({
   state,
   level,
@@ -63,7 +61,13 @@ function Organic({
         ? level.current
         : state === "speaking"
           ? 0.3 + Math.abs(Math.sin(t * 5)) * 0.3
-          : state === "thinking"
+          : [
+                "thinking",
+                "searching",
+                "executing_tool",
+                "reading_document",
+                "transcribing",
+              ].includes(state)
             ? 0.25
             : state === "responding"
               ? 0.2
@@ -73,7 +77,11 @@ function Organic({
       energy,
       0.13,
     );
-    material.uniforms.t.value = reduced ? 0 : t;
+    material.uniforms.t.value = reduced
+      ? 0
+      : state === "offline"
+        ? t * 0.08
+        : t;
     if (group.current) {
       group.current.rotation.y = reduced ? 0 : t * 0.08;
       const boost = pulse
@@ -84,7 +92,12 @@ function Organic({
   });
   return (
     <group ref={group}>
-      <mesh material={material}>
+      <mesh
+        material={material}
+        onAfterRender={(renderer) => {
+          renderer.domElement.dataset.salyRendered = "true";
+        }}
+      >
         <sphereGeometry
           args={[1, quality === "low" ? 32 : 72, quality === "low" ? 24 : 64]}
         />
@@ -95,7 +108,7 @@ function Organic({
           color="#58cfce"
           wireframe
           transparent
-          opacity={0.13}
+          opacity={0.035}
         />
       </mesh>
       <mesh>
@@ -108,7 +121,7 @@ function Organic({
           rotation={[Math.PI / 2 + i * 0.3, 0.15 + i * 0.4, i * 0.5]}
         >
           <torusGeometry args={[1.12 + i * 0.09, 0.004, 6, 128]} />
-          <meshBasicMaterial color="#67dacc" transparent opacity={0.25} />
+          <meshBasicMaterial color="#67dacc" transparent opacity={0.07} />
         </mesh>
       ))}
       <points>

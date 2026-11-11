@@ -3,17 +3,29 @@ services:
     build: .
     ports:
       - "127.0.0.1:8000:8000"
+    env_file: .env
     environment:
-      SALY_MODEL_URL: http://ollama:11434
-      SALY_MODEL: smollm3:3b
+      SALY_DATA_DIR: /data
+      SALY_HOST: 0.0.0.0
+      SALY_DATABASE_URL: postgresql+psycopg://saly:${SALY_POSTGRES_PASSWORD:?Configure SALY_POSTGRES_PASSWORD em .env}@database:5432/saly
     volumes:
       - saly-data:/data
     depends_on:
-      - ollama
-  ollama:
-    image: ollama/ollama:0.11.10
+      database:
+        condition: service_healthy
+  database:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: saly
+      POSTGRES_DB: saly
+      POSTGRES_PASSWORD: ${SALY_POSTGRES_PASSWORD:?Configure SALY_POSTGRES_PASSWORD em .env}
     volumes:
-      - ollama-models:/root/.ollama
+      - saly-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U saly -d saly"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 volumes:
   saly-data:
-  ollama-models:
+  saly-postgres:

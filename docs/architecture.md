@@ -1,37 +1,51 @@
-# Arquitetura e operação
+# Arquitetura v2
 
-## Componentes
+## Decisões
 
-Frontend React/TypeScript/Vite. `Core.tsx`: visualização R3F, shader e fallback 2D. `audio.ts`: fronteira da Web Audio/SpeechSynthesis/SpeechRecognition. `Panels.tsx`: gerenciamento persistente. `main.tsx`: sessão, navegação, chat streaming e transições operacionais. Síntese local futura deve implementar a mesma interface de iniciar/interromper/pausar e fornecer áudio via HTMLMediaElement/AudioBuffer ao AnalyserNode, sem substituir o modelo principal.
+Foi reaproveitada a base React/TypeScript/R3F, FastAPI, calculadora, controles de voz e gerenciamento de memórias. O backend foi separado em armazenamento, segurança, serviços de memória, adaptador LLM, registro do agente, integrações e Centro Smolin. O único modelo de linguagem fica remoto. A implantação preferida usa PostgreSQL/pgvector; SQLite mantém desenvolvimento funcional sem contratar serviços.
 
-Backend FastAPI. `storage.py`: esquema v1, FTS5 e transações. `main.py`: autenticação, permissões por proprietário, API, montagem do contexto e cliente HTTP de inferência. `tools.py`: calculadora por AST. `manage.py`: integridade, inicialização idempotente e backups consistentes.
+Uma proprietária é uma política de acesso, não uma linha de tabela `users`. `owner_access` tem apenas a chave singleton 1 e o hash de senha. `owner_sessions` armazena hashes de tokens aleatórios com prazo de 24 horas. Todas as tabelas de domínio são globais, sem `user_id`. Não há rota de registro ou troca de perfil.
 
-Ollama fica separado; apenas a URL administrada em ambiente é utilizada. O backend ignora proxies do processo somente para esse serviço local/configurado; isso não é uma rota de download de Internet. O frontend nunca recebe credenciais de modelo. A inferência principal é SmolLM3-3B. Recuperação lexical FTS5 não introduz outro modelo generativo ou de embeddings.
-
-## Fluxo de chat
-
-Autenticar → verificar tag do modelo → recuperar contexto permitido → persistir mensagem do usuário → montar histórico limitado → iniciar NDJSON → informar fontes/IDs → transmitir tokens → salvar resposta somente após `done`. Sem modelo, HTTP 503 antes de criar conversa. Falhas durante o fluxo geram evento `error`; não são mascaradas por texto pré-fabricado. `think:false` solicita resposta sem canal de raciocínio. Texto de documentos e memórias é delimitado como dados não confiáveis, sem execução de instruções.
-
-O contexto é limitado por caracteres para evitar crescimento ilimitado. Não há resumo automático de históricos; apenas as últimas mensagens que cabem no orçamento são reenviadas. O Ollama aplica seu limite de tokens. Conteúdo externo malicioso ainda pode influenciar texto produzido; por isso o modelo não tem acesso automático a shell, sistema de arquivos ou ferramentas destrutivas.
+SQLAlchemy mantém um esquema portátil. Entidades pequenas usam payload JSON validado por Pydantic nos limites da API/registro de ferramentas, mais IDs e datas tipados. Originais e fragmentos usam colunas próprias com FKs/cascatas; vetores têm dimensão fixa. Essa escolha preserva os painéis existentes e reduz migração duplicada entre SQLite/PostgreSQL. Evoluções de campos de domínio podem promover propriedades JSON para colunas/índices conforme volume real.
 
 ## Persistência
 
-SQLite em WAL, foreign keys e FTS5 com triggers sincronizadas. Versões preservam o estado anterior de uma memória em cada edição. Exclusão permanente remove versões desse registro. Relações são referências por ID; exclusão do alvo pode deixar uma referência histórica sem alvo. Imports removem relações de outra instalação e marcas de verificação. Memórias contestadas/arquivadas/desautorizadas não são recuperadas. Conversas e trechos já produzidos não são reescritos retroativamente.
+`app_config`, `owner_access`, `owner_sessions`, `conversations`, `messages`, `memories`, `versions`, `memory_vectors`, `documents`, `document_originals`, `document_chunks`, `document_jobs`, `tool_executions`, `agent_approvals`, `reminders`, `activities`, `evaluations` e `lists`.
 
-Tabela `schema_version` marca v1; `init` é idempotente. Futuras mudanças exigem migrações transacionais, backup prévio e testes de reversão. Não há downgrade automático nesta versão.
+FTS5/trigger no SQLite; full-text em português, pgvector e HNSW no PostgreSQL. Revisão do encoder é salva em cada vetor, com contrato de 384 dimensões e confirmação da revisão pelo servidor. A busca nunca substitui embeddings ausentes por números gerados artificialmente. Sem encoder, a recuperação é lexical; status indica indisponibilidade. O fingerprint precisa continuar identificando o mesmo encoder/normalização na reindexação.
 
-Backup administrativo usa SQLite Online Backup API, não cópia de arquivo em WAL ativo. Saída é criada com modo 0600, não sobrescreve arquivos e passa por integrity_check. Restauração exige confirmação de serviços parados e diretório vazio; sessões são invalidadas. Nunca acrescente backups/bancos privados ao Git. Exportação JSON da conta não inclui hashes de senha ou sessões.
+Originais estão em BLOB/BYTEA privado no banco, não em Storage separado. O RLS é habilitado no PostgreSQL; não há políticas de leitura pública, e a migração revoga privilégios de anon/authenticated. Conexão do backend usa papel servidor confiável. O browser não conecta diretamente ao banco e nunca recebe DSN ou credenciais administrativas.
 
-## Limites de segurança
+## Modelo, agente e memória
 
-Cadastro web inicial exclusivo. Isolamento por user_id nos dados e verificações de propriedade em alterações. Multiusuário é suportado no esquema/testes, mas o gerenciamento de contas adicionais e redefinição de senha são pendências. Sessões expiram em sete dias; logout invalida token no servidor. scrypt com salt aleatório; tentativas de login limitadas por usuário em memória no processo. Use um worker enquanto esse limitador não for compartilhado.
+`backend/llm/provider.py` transmite SSE OpenAI-compatible de um único modelo, validando disponibilidade via `/models`. Retry é limitado a respostas recusadas antes de transmitir geração. Depois do primeiro token não há replay silencioso. Nenhuma ferramenta é executada por texto livre: só chamadas estruturadas em registro tipado, com limite de argumentos, etapas e duração.
 
-SameSite=strict, cookies HttpOnly, Secure configurável, comparação Origin/Host e content-type/header de escritas. Sem CORS permissivo. Domínio/terminação TLS e limites de corpo devem ser configurados no proxy de uma implantação exposta. O backend e os scripts vinculam loopback por padrão. Documentação API não expõe conteúdo privado sem autenticação.
+O contexto combina memórias utilizáveis, documentos recuperados e histórico limitado em caracteres. Memória e conhecimento são responsabilidades separadas; PDFs não são copiados para preferências. Exclusões removem índices/representações derivadas identificadas, expiram aprovações e incrementam `context_epoch`. Prompts não usam mensagens de epochs anteriores; uma geração interrompida por mudança de contexto não é salva como concluída. Históricos independentes e backups antigos não são apagados indiscriminadamente.
 
-Uploads são extraídos em memória, com limites de tamanho/texto/páginas, sem manter o binário. PDFs hostis ainda podem demandar recursos: isolamento do parser em worker com timeout/cota é melhoria necessária antes de aceitar uploads públicos. IDs e tipos de atividade são registrados; senhas e tokens não são escritos no log de aplicação. O banco é privado, mas não cifrado em repouso.
+Operações sensíveis são propostas em `agent_approvals`. A decisão usa update condicional `status=pending`, expira em 15 minutos e só pode ser consumida uma vez. Alterações GitHub guardam SHA/diff antes da aprovação e recusam um arquivo que mudou desde a revisão. Erros de resultado externo incerto são marcados como falha, sem repetição automática. O agente nunca recebe shell, SQL arbitrário ou chaves.
 
-## Eventos audiovisuais
+Ferramentas de leitura retornam dados não confiáveis, não novas instruções. O teste adversarial comprova especificamente que uma saída maliciosa solicitando exclusão não a executa sem aprovação. Ele não comprova que toda frase do modelo resiste a influência de documentos; revisão humana e limites de autonomia continuam necessários.
 
-`listening`: somente após getUserMedia resolver; AnalyserNode calcula RMS real. `thinking`: requisição iniciada após verificação disponível no frontend; o backend ainda pode recusar. `responding`: primeiro token recebido com pulso. `speaking`: callback onstart do sintetizador; pausa/retomada/término/erro obedecem eventos e tokens de geração para ignorar callbacks antigos. Interrupção cancela requisição, captura e síntese. Nenhuma ativação passiva por nome.
+## Centro Smolin
 
-No SpeechSynthesis, ondas são aproximações visuais, sem acesso a amplitude PCM. Em movimento reduzido, o estado textual permanece disponível e animações são desativadas. WebGL ausente/erro ou qualidade 2D usa fallback. Qualidade baixa reduz subdivisões, partículas e densidade de pixels.
+Recepção autenticada e limitada → validação de bytes → hash/duplicatas → original privado → job persistente → parser PDF em subprocesso com limites Linux → páginas/texto/metadados → fragmentos sobrepostos → embeddings opcionais → persistência/indexação → recuperação com IDs/páginas.
+
+Transferência tem progresso de bytes por XHR; processamento tem páginas concluídas e estado real de job. Arquivos sem texto permanecem em `ocr_required`; extração incompleta é `partial`. Cancelamento interrompe o task/parser e preserva o original; uma extração em andamento não deve recriar documento excluído. Jobs pendentes são retomados na inicialização do processo ASGI. Não é uma fila distribuída: execute um único worker de aplicação enquanto não houver coordenação distribuída.
+
+O parser não interpreta JavaScript, macros, anexos executáveis ou instruções do documento. O original preservado pode conter conteúdo ativo: o backend nunca o executa; a abertura é uma ação da proprietária no visualizador do navegador, com sandbox e nosniff. PDFs corrompidos, protegidos ou além dos limites geram falha controlada. OCR e reconstrução precisa de tabelas não estão implementados.
+
+## Eventos e interface
+
+`operations.ts` centraliza operações identificadas, prioridades e eventos. Microfone, transcrição, requisição, tokens, consulta, documentos, ferramentas, voz e rede provocam transições reais. O temporizador de 650 ms só desvanece um sucesso já confirmado, com versão que evita apagar uma operação posterior. Testes cobrem concorrência/cancelamento e não inferem conclusão por tempo decorrido.
+
+O núcleo tem deformação procedural e iluminação GLSL; não é GIF ou esfera rígida. Movimento reduzido desativa animações contínuas. Fallback 2D, baixa qualidade e DPR limitado mantêm acesso. Amplitude do microfone usa RMS de AnalyserNode. SpeechSynthesis não entrega PCM; sinais de saída usam eventos de início/palavra/pausa/fim e animação aproximada, declarada na interface.
+
+Markdown usa react-markdown/remark-gfm sem HTML bruto. Imagens externas viram links e não são carregadas automaticamente. Recursos de código são escapados. A PWA cacheia somente shell e arquivos públicos de build; nunca APIs, documentos, banco ou chaves. Sem conexão, mostra uma página pública de indisponibilidade, sem prometer inferência offline.
+
+## Segurança e limites
+
+scrypt com salt, cookie HttpOnly/SameSite Strict, Secure em HTTPS, limitação de tentativas/requisições, validação de origem e tipo de requisição, limites antes de parsing, dados privados fora do Git e integrações com destinos fixos/autorizados. Leituras web exigem HTTPS, resoluções públicas, sem redirects, tamanho/timeout limitados e allowlist explícita. O deployment deve manter egress que bloqueie redes privadas: DNS rebinding e ataques de infraestrutura exigem proteção da hospedagem além da validação de aplicação.
+
+Sem chaves, o provedor e integrações ficam indisponíveis. Não se cria senha real para a proprietária durante testes. `.env` é carregado sem sobrescrever bindings injetados. Arquivos de backup têm modo 0600; sessões são invalidadas após recuperação. Banco e backup não são criptografados pela aplicação: use armazenamento privado/cifrado da infraestrutura.
+
+Ainda faltam operação de múltiplos workers, workers duráveis em funções efêmeras, autenticação externa de identidade, push fora do app, OCR, avaliação factual ampla, encoder/modelo reais com suas quotas e validação física de áudio. Essas limitações não são mascaradas por indicadores fictícios.

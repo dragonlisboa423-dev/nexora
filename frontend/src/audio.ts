@@ -11,6 +11,8 @@ type Recognition = {
   onresult: (e: any) => void;
   onerror: (e: any) => void;
   onend: () => void;
+  onspeechstart: () => void;
+  onspeechend: () => void;
 };
 declare global {
   interface Window {
@@ -53,7 +55,7 @@ export function useAudio(
     setListening(false);
     setState("idle");
   }
-  async function startMic() {
+  async function startMic(wakeMode = false) {
     if (!navigator.mediaDevices?.getUserMedia) {
       setError(
         "Microfone requer navegador compatível e contexto seguro HTTPS ou localhost.",
@@ -96,6 +98,7 @@ export function useAudio(
       tick();
       setListening(true);
       setState("listening");
+      pulse();
       const Constructor =
         window.SpeechRecognition || window.webkitSpeechRecognition;
       if (Constructor) {
@@ -109,6 +112,14 @@ export function useAudio(
           let text = "";
           for (let i = 0; i < e.results.length; i++)
             text += e.results[i][0].transcript + " ";
+          if (wakeMode) {
+            const match = /\b(saly|sali)\b/i.exec(text);
+            if (!match) return;
+            text = text
+              .slice(match.index + match[0].length)
+              .replace(/^[.,:!\s]+/, "");
+            pulse();
+          }
           onTranscript(text.trim());
         };
         rec.onerror = (e) => {
@@ -118,6 +129,12 @@ export function useAudio(
         };
         rec.onend = () => {
           if (token === generation.current) stopMic();
+        };
+        rec.onspeechstart = () => {
+          if (token === generation.current) setState("listening");
+        };
+        rec.onspeechend = () => {
+          if (token === generation.current) setState("transcribing");
         };
         rec.start();
       } else {
@@ -173,6 +190,9 @@ export function useAudio(
       setState(
         e.error === "canceled" || e.error === "interrupted" ? "idle" : "error",
       );
+    };
+    u.onboundary = () => {
+      if (version === utteranceVersion.current) pulse();
     };
     speechSynthesis.speak(u);
   }

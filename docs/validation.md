@@ -1,58 +1,57 @@
-# Validação e limites — 31/10/2026
+# Evidências de validação · 11/11/2026
 
-O código foi implementado e testado na branch `feat/saly-intelligence`. A solicitação integral ainda **não está concluída**: inferência real e validação física de áudio são pendências obrigatórias antes de afirmar que a assistente completa está operacional.
+A implementação v2 foi verificada no ambiente Codex, em SQLite e PostgreSQL/pgvector descartável. **Não se considera a assistente integralmente validada em produção:** modelo remoto real, encoder real, credenciais de integrações, Supabase hospedado e áudio físico continuam pendentes.
 
-## Evidências executadas
+## Checks executados
 
-| Verificação | Resultado |
+| Check | Resultado observado |
 |---|---|
-| `bash scripts/install.sh` | Passou, inclusive repetição com dependências já presentes, `npm ci`, build e migração idempotente |
-| `bash scripts/test.sh` | Build TypeScript/Vite passou; 26 testes pytest passaram |
-| SQLite FTS5, memória, edição/exclusão, versões e restauração | Passaram em integração |
-| Consolidação aprovada, arquivo e preservação dos originais | Passou em integração |
-| Banco após novo processo | Persistência comprovada |
-| Backup SQLite e recuperação em diretório novo | Passaram; sessões invalidadas e sobrescrita recusada |
-| Autenticação, logout, limitação de tentativas, CSRF, isolamento entre dois usuários | Passaram |
-| Extração de PDF com texto, importação Markdown e pesquisa com fontes | Passaram |
-| Parâmetros vocais e perfis persistentes com validação | Passaram pela API |
-| Streaming de tokens, contexto filtrado e salvamento ao concluir | Passou com transporte de modelo controlado no teste, não com pesos reais |
-| Modelo offline | HTTP 503, sem resposta fictícia ou criação de conversa |
-| Calculadora AST, limites, lista interna e painel de avaliação | Passaram; avaliação operacional gera 8 resultados reais |
-| Chromium desktop 1440 px e celular 390 px | Cadastro, núcleo WebGL, memória, reload, documento, FTS, avaliação, configurações e menu móvel passaram; sem exceções JavaScript ou overflow horizontal |
-| Microfone no Chromium | Nenhuma captura antes do clique; ativação e encerramento das tracks comprovados com dispositivo de áudio de teste do Chromium |
-| Ruff | Passou |
-| `npm audit` | Zero vulnerabilidades conhecidas no resultado consultado após atualização |
-| `pip-audit -r backend/requirements.txt --vulnerability-service pypi` | Zero vulnerabilidades conhecidas no resultado consultado após atualização |
+| Instalador completo | Passou: Python 3.12, dependências fixadas, npm ci, build e esquema v2; repetição preservou o ambiente |
+| TypeScript/Vite | Build passou |
+| Vitest | **6 testes passaram** da máquina de estados, concorrência, cancelamento, offline e confirmação real |
+| Pytest com PostgreSQL de teste habilitado | **54 testes passaram**, sem skips nessa execução |
+| PostgreSQL 17 + pgvector | Banco real em Docker: busca por distância, pesquisa textual, referência de página, RLS e exclusão em cascata passaram |
+| Migração SQL versionada | Executada com sucesso no PostgreSQL descartável; extensão pgvector observada: 0.8.7 |
+| Segurança de acesso | Sem registro; sessão/expiração/logout, CSRF, limitação de tentativas, APIs privadas e upload anônimo bloqueados |
+| Memória única | CRUD, versões, restauração, export/import, consolidação, importância/validade, persistência entre processos, invalidação de contexto e exclusão de derivados/vetores |
+| Migração legada | Fixture com hash/senha, texto e datas preservados; original e backup intactos; repetição recusada |
+| Documentos | PDF textual, múltiplas páginas, acentos, 25 páginas, texto de tabela simples, página vazia, parcial, corrompido, duplicado, limite de páginas, cancelamento, reprocessamento e original byte a byte |
+| Fontes | Trechos apontam para documento/página reais; IDs inventados reconhecidos são marcados como não verificados |
+| Agente | Calculadora real, argumentos inválidos bloqueados, aprovação única, recusa, expiração por contexto, registro alterado e proteção de SHA/diff no GitHub |
+| PDF adversarial | Mesmo forçando no teste uma saída de modelo que tenta apagar memória, a operação ficou pendente e nenhum dado foi apagado |
+| Provedor remoto | SSE/429/backoff/fluxo parcial e tool calls testados com transporte HTTP controlado; não é evidência de inferência real |
+| Embeddings | Dimensão/revisão, persistência e recuperação híbrida testadas com vetores controlados; não é benchmark de qualidade semântica |
+| Chromium | Interface de proprietária única, WebGL, memória/reload, Smolin, agenda/aprovação, ferramenta, avaliação, configurações, fallback 2D e navegação móvel passaram |
+| Markdown no Chromium | Chat/regeneração com transporte de teste; script não executou e imagens externas não foram carregadas automaticamente |
+| Microfone no Chromium | Nenhuma captura antes do clique; tracks iniciadas e encerradas de fato com dispositivo de áudio de teste |
+| PWA | Recursos públicos cacheados; nenhuma rota `/api` no cache; fallback offline carregou; sem exceções JavaScript |
+| Ruff e diff | Análise passou; sem erros de whitespace |
+| Auditorias | npm audit e pip-audit finais: zero vulnerabilidades conhecidas no resultado consultado; python-dotenv foi atualizado para 1.2.2 após um alerta |
+| Docker | Build e execução passaram após corrigir propriedade dos arquivos: shell/bootstrap HTTP 200, memória/documentos anônimos HTTP 401 e UID 1000; CA/TLS preservados, sem credenciais/bancos no contexto |
 
-A auditoria depende da base disponível no momento e não constitui certificação de segurança. As versões resolvidas foram fixadas nos manifests/lockfile; repita auditorias antes de implantar.
+O teste PostgreSQL só roda se `SALY_TEST_DATABASE_URL` for explicitamente fornecida; sem isso, ele é marcado como não executado. Não use DSN de produção. O navegador usa dados/servidor descartáveis, isola chaves reais e usa transporte controlado apenas no check de chat/Markdown. Não existe esse transporte fictício na aplicação de produção.
 
-O build informa que o chunk Three.js é maior que 500 kB. O núcleo usa importação dinâmica e fica separado do bundle principal; redução adicional é melhoria de desempenho. A suíte emite um aviso de depreciação de TestClient/httpx; os testes executam e passam, sem silenciar o aviso.
+O build avisa sobre o chunk Three.js acima de 500 kB, separado por carregamento dinâmico. Otimização adicional continua possível. TestClient emite uma depreciação de httpx; os testes efetivamente executam e passam. Auditorias dependem das bases disponíveis e não garantem segurança universal.
 
-## Bloqueio de inferência
+## Fora do alcance desta execução
 
-Não há Ollama ou pesos do modelo instalados nesta máquina. As consultas HTTPS aos destinos oficiais `huggingface.co` e `registry.ollama.ai` foram negadas com HTTP 403 pela política de rede. Não houve bypass ou download de pesos por terceiros.
+- Não havia `SALY_LLM_API_KEY` utilizável configurada. Documentação Groq retornou 403 pela política de rede. A disponibilidade do identificador/modelo, qualidade em português, resposta gerada real, quotas gratuitas, streaming e cancelamento contra o serviço real não foram certificados.
+- Não havia serviço de embeddings/revisão imutável configurado. O código não inventa vetores; a busca textual é o modo disponível imediatamente. pgvector foi real; o encoder dos testes foi controlado.
+- Não há projeto Supabase conectado. O esquema/adaptador e a proteção SQL foram verificados em PostgreSQL local, não em uma conta remota. A conexão externa depende de configuração privada, TLS e rede próprios.
+- GitHub e Brave foram exercitados por contratos/mocks nos testes de integração da aplicação; nenhuma issue, alteração ou busca real foi enviada por ela. O Git usado para entregar a branch é separado dessas credenciais.
+- O áudio de entrada do Chromium é um dispositivo de teste. Voz feminina audível, qualidade de reconhecimento, wake word e comportamento físico do microfone precisam de verificação no navegador/dispositivo da proprietária. SpeechSynthesis não fornece amplitude PCM; animação de saída é aproximada e declarada.
+- Não foi instalado um app no dispositivo da proprietária, publicado serviço web, testado um Codespaces remoto dela, executado o novo workflow no GitHub nem validada restauração em tarefa nova da nuvem. Arquivos/blueprint e testes locais não equivalem a essas ações.
 
-Foram salvos no rascunho do ambiente: `install_script`, `start_skill` e adições desses dois domínios à lista personalizada, preservando o preset de gerenciadores de pacotes. Salvar o rascunho não aplica a rede nem publica um snapshot. Revise e salve nas configurações do ambiente e depois publique quando apropriado. Os domínios de redirecionamento de blobs podem exigir investigação adicional. A implantação em uma tarefa nova não foi validada.
+## Limitações funcionais
 
-Após disponibilizar runtime/pesos: execute `ollama show smollm3:3b`, confirme o indicador do modelo, envie uma mensagem, verifique tokens em streaming, interrupção, histórico e recuperação de uma memória autorizada/documento. Observe RAM/latência reais e compare a identidade dos pesos com o modelo solicitado. Nenhum benchmark de geração foi executado aqui.
+Sem OCR automático, push/cron externo, recorrência, calendário externo, encoder hospedado pelo próprio projeto, OAuth de identidade, fila distribuída, garantia de execução em funções efêmeras, benchmark factual amplo ou proteção universal contra prompt injection. Documentos antigos sem original são preservados como texto legado e não recebem páginas inventadas.
 
-## Validação manual ainda necessária
+O verificador confirma IDs e resultados operacionais; não garante que todas as afirmações estejam comprovadas pelas fontes. Leitura web exige allowlist e proteção de egress contra redes privadas; a validação de aplicação não substitui a segurança de DNS/proxy da infraestrutura. O banco e backups precisam de proteção em repouso/retention próprios.
 
-- Microfone físico, permissão negada e suporte de transcrição em cada navegador alvo. O teste com áudio sintético não comprova qualidade do reconhecimento ou comportamento do dispositivo real.
-- Voz feminina pt-BR disponível no dispositivo, seleção/amostra, início real, pausa/retomada, fim e interrupção. Headless não comprova reprodução audível. A aplicação trata esses eventos; precisa ser validada com voz instalada.
-- Em SpeechSynthesis, as ondas são aproximações ligadas aos eventos; análise acústica exata da saída não está implementada.
-- SmolLM3 real em CPU, acurácia linguística, alinhamento entre citações e afirmações, latência de cancelamento e consumo de recursos.
-- Inicialização real do devcontainer, Docker Compose e execução do workflow no GitHub. Arquivos fornecidos, mas não executados neste ambiente.
-- Restauração de snapshot da nuvem em tarefa nova, persistência do volume e HTTPS/encaminhamento privado no Codespaces.
+## Próxima validação com configuração real
 
-## Funcionalidades pendentes
+Preencher a chave pelo campo privado do servidor, permitir o domínio do provedor, confirmar `/models`, desbloquear como proprietária e testar uma conversa com streaming/cancelamento e uma ferramenta. Configurar PostgreSQL/Supabase e encoder revisionado, reprocessar um PDF com página conhecida, buscar paráfrases e verificar as referências. Testar backup/restauração em destino separado e áudio real antes de declarar todos os critérios concluídos.
 
-TTS local e pacotes licenciados; interface de adaptador PCM; ativação por nome mediante consentimento; treinamento LoRA/QLoRA; resumo automático de históricos; consolidação semântica assistida pelo modelo; detecção geral de contradições e avaliação factual de respostas; referências por página de PDF (atualmente por trecho); relatórios narrativos e organização avançada de arquivos; recuperação de senha/gestão de contas; migração de bancos legados (não fornecidos em formato acessível). A consolidação manual aprovada e exportação de relatório de atividades JSON já estão disponíveis.
+## Rascunho do ambiente
 
-Nenhuma função pendente é apresentada como ferramenta executável na interface. “Memória progressiva” significa armazenamento/recuperação autorizados; não treinamento dos pesos.
-
-## Correção do instalador para Codespaces existentes
-
-O instalador original seguia `python3` sem validar a versão. Após um relato de falha compilando `pydantic-core` (sem log suficiente para confirmar a causa exata), o instalador passou a selecionar Python 3.12, atualizar pip e exigir wheel para essa extensão. Ambientes virtuais incompatíveis são preservados, não excluídos.
-
-Regressões verificadas: rejeição de interpretador explicitamente incompatível; preservação de `.venv` quebrada; criação de Python 3.12; repetição sem novo backup; preservação de `.env` e dados. A rota sem Python 3.12 no PATH foi exercitada em diretório descartável: uv baixou CPython 3.12.15 e criou o ambiente com verificações de integridade/TLS habilitadas. O script completo de instalação/build também passou novamente. Isso não equivale a observar a execução no Codespaces do usuário.
+Foram atualizados `install_script`, `start_skill`, variáveis não secretas de modelo/base URL, requisito de `SALY_LLM_API_KEY` e domínios `api.groq.com`/`console.groq.com`, preservando os domínios personalizados anteriores. O rascunho foi salvo; isso não executa scripts, não aplica rede/chaves e não publica a configuração. A proprietária deve revisar e salvar nas configurações e publicar o ambiente quando desejar uma nova versão reutilizável.

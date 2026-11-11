@@ -9,7 +9,7 @@ export function Memories({ notify }: { notify: (s: string) => void }) {
     [versions, setVersions] = useState<any[]>([]);
   const blank = {
     content: "",
-    category: "semantica",
+    category: "informacoes",
     tags: [],
     relations: [],
     source: "manual",
@@ -252,6 +252,44 @@ export function Memories({ notify }: { notify: (s: string) => void }) {
               />
             </label>
           </div>
+          <label>
+            Importância: {editing.importance ?? 0.5}
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step=".1"
+              value={editing.importance ?? 0.5}
+              onChange={(e) =>
+                setEditing({ ...editing, importance: Number(e.target.value) })
+              }
+            />
+          </label>
+          <label>
+            Validade opcional (fuso do dispositivo)
+            <input
+              type="datetime-local"
+              value={
+                editing.expires_at
+                  ? new Date(
+                      new Date(editing.expires_at).getTime() -
+                        new Date(editing.expires_at).getTimezoneOffset() *
+                          60000,
+                    )
+                      .toISOString()
+                      .slice(0, 16)
+                  : ""
+              }
+              onChange={(e) =>
+                setEditing({
+                  ...editing,
+                  expires_at: e.target.value
+                    ? new Date(e.target.value).toISOString()
+                    : null,
+                })
+              }
+            />
+          </label>
           <label className="check">
             <input
               type="checkbox"
@@ -380,11 +418,13 @@ export function Memories({ notify }: { notify: (s: string) => void }) {
   );
 }
 export const categories = [
-  "episodica",
-  "semantica",
-  "procedimental",
+  "informacoes",
   "preferencias",
-  "avaliativa",
+  "projetos",
+  "decisoes",
+  "atividades",
+  "instrucoes",
+  "temporarias",
 ];
 export function PageTitle({
   eyebrow,
@@ -746,9 +786,13 @@ export function SettingsPanel({
                   })
                 }
               />
-              {k === "useMemory"
-                ? "Recuperar memórias autorizadas no chat"
-                : "Recuperar trechos da base de conhecimentos"}
+              {k === "wakeWordEnabled"
+                ? "Ao ativar explicitamente o microfone, aguardar a palavra Saly antes de transcrever para o campo"
+                : k === "remoteConsent"
+                  ? "Autorizo envio ao provedor remoto e às integrações externas configuradas (mensagens, contexto e trechos autorizados)"
+                  : k === "useMemory"
+                    ? "Recuperar memórias autorizadas no chat"
+                    : "Recuperar trechos do Centro Smolin"}
             </label>
           ))}
           <p>
@@ -782,6 +826,93 @@ export function SettingsPanel({
           </p>
           <p>{health?.detail}</p>
           <label>
+            Nome interno do acervo
+            <input
+              value={prefs.collectionName || "Smoln"}
+              onChange={(e) =>
+                void save({ ...prefs, collectionName: e.target.value })
+              }
+            />
+          </label>
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={prefs.notifications?.enabled ?? false}
+              onChange={(e) =>
+                void save({
+                  ...prefs,
+                  notifications: {
+                    quietStart: "22:00",
+                    quietEnd: "08:00",
+                    timezone: "America/Sao_Paulo",
+                    minimumImportance: 0.5,
+                    ...prefs.notifications,
+                    enabled: e.target.checked,
+                  },
+                })
+              }
+            />
+            Avisos de lembretes enquanto a aplicação estiver aberta
+          </label>
+          {prefs.notifications && (
+            <label>
+              Importância mínima dos avisos:{" "}
+              {prefs.notifications.minimumImportance}
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step=".1"
+                value={prefs.notifications.minimumImportance}
+                onChange={(e) =>
+                  void save({
+                    ...prefs,
+                    notifications: {
+                      ...prefs.notifications!,
+                      minimumImportance: Number(e.target.value),
+                    },
+                  })
+                }
+              />
+            </label>
+          )}
+          {prefs.notifications && (
+            <div className="form-grid">
+              <label>
+                Silêncio a partir de
+                <input
+                  type="time"
+                  value={prefs.notifications.quietStart}
+                  onChange={(e) =>
+                    void save({
+                      ...prefs,
+                      notifications: {
+                        ...prefs.notifications!,
+                        quietStart: e.target.value,
+                      },
+                    })
+                  }
+                />
+              </label>
+              <label>
+                Fim do silêncio
+                <input
+                  type="time"
+                  value={prefs.notifications.quietEnd}
+                  onChange={(e) =>
+                    void save({
+                      ...prefs,
+                      notifications: {
+                        ...prefs.notifications!,
+                        quietEnd: e.target.value,
+                      },
+                    })
+                  }
+                />
+              </label>
+            </div>
+          )}
+          <label>
             Qualidade gráfica
             <select
               value={prefs.graphics}
@@ -799,8 +930,9 @@ export function SettingsPanel({
             </select>
           </label>
           <p className="muted">
-            Um único modelo generativo via Ollama. FTS5 para recuperação.
-            Ajustes LoRA/QLoRA e ativação por nome ainda não implementados.
+            Um único modelo generativo remoto. Recuperação textual e vetorial
+            quando configurada. Ajustes LoRA/QLoRA e ativação por nome ainda não
+            implementados.
           </p>
         </div>
       )}
@@ -838,8 +970,7 @@ export function Activity({ notify }: { notify: (s: string) => void }) {
               try {
                 setResult(
                   String(
-                    (await post("/tools/calculate", { expression: expr }))
-                      .result,
+                    (await post("/calculate", { expression: expr })).result,
                   ),
                 );
                 await load();

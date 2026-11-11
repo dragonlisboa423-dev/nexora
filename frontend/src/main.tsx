@@ -41,6 +41,12 @@ import {
   Voices,
 } from "./Panels";
 import "./style.css";
+import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { Smolin } from "./Smolin";
+import { Approvals, Agenda, Tools, ReminderAlerts } from "./AgentPanels";
+import { emit, transition, useOperations } from "./operations";
+import { PwaUpdate } from "./pwa";
 const labels: Record<SalyState, string> = {
   idle: "Em repouso",
   listening: "Escutando",
@@ -50,86 +56,108 @@ const labels: Record<SalyState, string> = {
   paused: "Fala pausada",
   executing: "Executando operação",
   error: "Atenção necessária",
+  transcribing: "Transcrevendo voz",
+  searching: "Consultando fontes",
+  reading_document: "Processando documento",
+  executing_tool: "Executando ferramenta",
+  success: "Operação confirmada",
+  offline: "Sem conexão",
 };
-type Message = { role: string; content: string; partial?: boolean };
+type Message = {
+  role: string;
+  content: string;
+  partial?: boolean;
+  sources?: any[];
+};
 function Login({ done }: { done: () => void }) {
-  const [setup, setSetup] = useState(false),
+  const [setup, setSetup] = useState<boolean | null>(null),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
   useEffect(() => {
     api("/bootstrap")
       .then((d) => setSetup(d.needs_setup))
-      .catch((e) => setError(e.message));
+      .catch(() =>
+        setError(
+          "Não foi possível conectar ao espaço privado. Confira sua conexão.",
+        ),
+      );
   }, []);
   return (
     <div className="login">
       <div className="login-mark">S</div>
       <small>SALY INTELLIGENCE</small>
-      <h1>Seu espaço de inteligência.</h1>
+      <h1>Uma inteligência. Seu universo.</h1>
       <p>
-        Memória, contexto e possibilidades.
+        Um único espaço. Uma memória contínua.
         <br />
-        Sob seu controle.
+        Acesso exclusivo da proprietária.
       </p>
-      <form
-        className="card"
-        onSubmit={async (e) => {
-          e.preventDefault();
-          setBusy(true);
-          const data = new FormData(e.currentTarget);
-          try {
-            await post(
-              "/auth/" + (setup ? "register" : "login"),
-              Object.fromEntries(data),
-            );
-            done();
-          } catch (e) {
-            setError((e as Error).message);
-          } finally {
-            setBusy(false);
-          }
-        }}
-      >
-        <h2>{setup ? "Criar conta proprietária" : "Bem-vindo de volta"}</h2>
-        {setup && (
-          <p>Mantenha as portas privadas durante o cadastro inicial.</p>
-        )}
-        <label>
-          Usuário
-          <input
-            autoComplete="username"
-            name="username"
-            pattern="[\w.@-]+"
-            required
-            minLength={3}
-          />
-        </label>
-        <label>
-          Senha (mínimo 12 caracteres)
-          <input
-            type="password"
-            autoComplete={setup ? "new-password" : "current-password"}
-            name="password"
-            required
-            minLength={12}
-          />
-        </label>
-        {error && <p role="alert">{error}</p>}
-        <button disabled={busy}>
-          {busy ? "Aguarde…" : setup ? "Criar meu espaço" : "Entrar"}
-        </button>
-      </form>
+      {setup === false && (
+        <form
+          className="card"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            setBusy(true);
+            const form = new FormData(e.currentTarget);
+            try {
+              await post("/auth/login", { password: form.get("password") });
+              done();
+            } catch (e) {
+              setError((e as Error).message);
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          <h2>Desbloquear Saly</h2>
+          <label>
+            Senha privada
+            <input
+              type="password"
+              name="password"
+              autoComplete="current-password"
+              required
+            />
+          </label>
+          <button disabled={busy}>
+            {busy ? "Verificando…" : "Desbloquear"}
+          </button>
+        </form>
+      )}
+      {setup === true && (
+        <div className="card">
+          <h2>Configuração privada pendente</h2>
+          <p>
+            O acesso deve ser preparado pela proprietária no servidor. Não há
+            cadastro público.
+          </p>
+        </div>
+      )}
+      {error && <p role="alert">{error}</p>}
       <small>
-        Inferência local · Dados privados · Sem API comercial obrigatória
+        Memória única · Documentos privados · Controle da proprietária
       </small>
     </div>
   );
 }
 function App() {
+  const state = useOperations();
+  const setState = (value: SalyState) => transition("interaction", value);
+  const [historyQuery, setHistoryQuery] = useState("");
+  useEffect(() => {
+    const lost = () => emit({ type: "CONNECTION_LOST", id: "network" }),
+      restored = () => emit({ type: "CONNECTION_RESTORED", id: "network" });
+    window.addEventListener("offline", lost);
+    window.addEventListener("online", restored);
+    if (!navigator.onLine) lost();
+    return () => {
+      window.removeEventListener("offline", lost);
+      window.removeEventListener("online", restored);
+    };
+  }, []);
   const [auth, setAuth] = useState<boolean | null>(null),
     [prefs, setPrefs] = useState<Prefs | null>(null),
     [health, setHealth] = useState<any>(null),
-    [state, setState] = useState<SalyState>("idle"),
     [error, setError] = useState(""),
     [input, setInput] = useState(""),
     [messages, setMessages] = useState<Message[]>([]),
@@ -139,7 +167,8 @@ function App() {
     [open, setOpen] = useState(false),
     [busy, setBusy] = useState(false),
     [sources, setSources] = useState<any[]>([]),
-    [memoryIds, setMemoryIds] = useState<string[]>([]);
+    [memoryIds, setMemoryIds] = useState<string[]>([]),
+    [toolEvents, setToolEvents] = useState<any[]>([]);
   const saveQueue = useRef(Promise.resolve()),
     abort = useRef<AbortController | null>(null),
     bottom = useRef<HTMLDivElement>(null),
@@ -195,21 +224,44 @@ function App() {
       setError((e as Error).message);
     }
   }
-  async function send(e: React.FormEvent) {
+  async function send(e: React.FormEvent, forced?: string) {
     e.preventDefault();
-    if (!input.trim() || busy) return;
+    const draft = forced ?? input;
+    if (!draft.trim() || busy) return;
+    if (!prefs?.privacy.remoteConsent) {
+      if (
+        !prefs ||
+        !confirm(
+          "Enviar esta mensagem e o contexto autorizado ao provedor remoto configurado? Você pode revogar essa autorização em Privacidade.",
+        )
+      )
+        return;
+      try {
+        const next = {
+          ...prefs,
+          privacy: { ...prefs.privacy, remoteConsent: true },
+        };
+        await put("/settings", next);
+        setPrefs(next);
+      } catch (e) {
+        setError((e as Error).message);
+        return;
+      }
+    }
     audio.stopMic();
     audio.stopSpeech();
     setError("");
     setBusy(true);
     setSources([]);
     setMemoryIds([]);
+    setToolEvents([]);
     setState("thinking");
-    const text = input.trim();
+    const text = draft.trim();
     setInput("");
     setMessages((m) => [...m, { role: "user", content: text }]);
     const controller = new AbortController();
     abort.current = controller;
+    let currentSources: any[] = [];
     let answer = "",
       begun = false,
       completed = false;
@@ -240,8 +292,16 @@ function App() {
           if (event.type === "context") {
             setConversation(event.conversation_id);
             setSources(event.sources);
+            currentSources = event.sources;
             setMemoryIds(event.memory_ids);
           }
+          if (event.type === "state") setState(event.state);
+          if (event.type === "tool")
+            setToolEvents((items) => [...items, event]);
+          if (event.type === "tool" && event.result.approval_required)
+            setError(
+              "Uma operação está aguardando sua revisão no painel de aprovações.",
+            );
           if (event.type === "token") {
             if (!begun) {
               begun = true;
@@ -258,16 +318,18 @@ function App() {
           if (event.type === "error") throw Error(event.detail);
           if (event.type === "done") {
             completed = true;
+            answer = event.content ?? answer;
             setMessages((m) => [
-              ...m.slice(0, -1),
-              { role: "assistant", content: answer },
+              ...(begun ? m.slice(0, -1) : m),
+              { role: "assistant", content: answer, sources: currentSources },
             ]);
+            begun = true;
           }
         }
         if (done) break;
       }
       if (!completed) throw Error("Fluxo encerrado antes da conclusão.");
-      setState("idle");
+      emit({ type: "MODEL_RESPONSE_COMPLETED", id: "interaction" });
       if (prefs?.voice.autoSpeak && answer) audio.speak(answer, prefs.voice);
     } catch (e) {
       if ((e as Error).name === "AbortError") {
@@ -314,7 +376,9 @@ function App() {
   const navigation = [
     ["/", "Visão central", Sparkles],
     ["/memory", "Memórias", Brain],
-    ["/knowledge", "Conhecimentos", Database],
+    ["/knowledge", "Centro Smolin", Database],
+    ["/agenda", "Agenda", ActivityIcon],
+    ["/tools", "Ferramentas e integrações", ShieldCheck],
     ["/voices", "Biblioteca de vozes", AudioLines],
     ["/activity", "Atividades", ActivityIcon],
     ["/evaluation", "Avaliação", ShieldCheck],
@@ -357,27 +421,40 @@ function App() {
             <Plus size={16} />
           </button>
         </div>
+        <input
+          className="history-search"
+          aria-label="Pesquisar conversas"
+          placeholder="Buscar conversas…"
+          value={historyQuery}
+          onChange={(e) => setHistoryQuery(e.target.value)}
+        />
         <div className="history">
-          {history.map((h) => (
-            <button
-              key={h.id}
-              disabled={busy}
-              className={h.id === conversation ? "selected" : ""}
-              onClick={async () => {
-                try {
-                  stop();
-                  setMessages(await api("/conversations/" + h.id));
-                  setConversation(h.id);
-                  setSources([]);
-                  setMemoryIds([]);
-                } catch (e) {
-                  setError((e as Error).message);
-                }
-              }}
-            >
-              {h.title}
-            </button>
-          ))}
+          {history
+            .filter((h) =>
+              h.title
+                .toLocaleLowerCase()
+                .includes(historyQuery.toLocaleLowerCase()),
+            )
+            .map((h) => (
+              <button
+                key={h.id}
+                disabled={busy}
+                className={h.id === conversation ? "selected" : ""}
+                onClick={async () => {
+                  try {
+                    stop();
+                    setMessages(await api("/conversations/" + h.id));
+                    setConversation(h.id);
+                    setSources([]);
+                    setMemoryIds([]);
+                  } catch (e) {
+                    setError((e as Error).message);
+                  }
+                }}
+              >
+                {h.title}
+              </button>
+            ))}
           {!history.length && <small>Suas conversas aparecerão aqui.</small>}
         </div>
         <div className="sidebar-footer">
@@ -435,6 +512,14 @@ function App() {
           </div>
         </header>
         <main id="main">
+          <PwaUpdate />
+          <ReminderAlerts
+            enabled={prefs?.notifications?.enabled ?? false}
+            quietStart={prefs?.notifications?.quietStart}
+            quietEnd={prefs?.notifications?.quietEnd}
+            timezone={prefs?.notifications?.timezone}
+            minimumImportance={prefs?.notifications?.minimumImportance}
+          />
           {error && (
             <div className="notice" role="alert">
               <span>{error}</span>
@@ -470,7 +555,7 @@ function App() {
                       </span>
                       <small>
                         {health?.model_ready
-                          ? "MODELO LOCAL · CPU COMPATÍVEL"
+                          ? "MODELO REMOTO · CONTEXTO AUTORIZADO"
                           : "CONECTE O MODELO PARA CONVERSAR"}
                       </small>
                     </div>
@@ -547,7 +632,50 @@ function App() {
                               {m.role === "user" ? "VOCÊ" : "SALY"}{" "}
                               {m.partial ? "· PARCIAL" : ""}
                             </small>
-                            <p>{m.content}</p>
+                            <div className="markdown">
+                              <Markdown
+                                remarkPlugins={[remarkGfm]}
+                                skipHtml
+                                components={{
+                                  img: ({ src, alt }) => (
+                                    <a
+                                      href={src}
+                                      target="_blank"
+                                      rel="noreferrer noopener"
+                                    >
+                                      Imagem externa: {alt || "abrir"}{" "}
+                                      (carregamento automático desativado)
+                                    </a>
+                                  ),
+                                  a: ({ children, ...props }) => (
+                                    <a
+                                      {...props}
+                                      target="_blank"
+                                      rel="noreferrer noopener"
+                                    >
+                                      {children}
+                                    </a>
+                                  ),
+                                }}
+                              >
+                                {m.content}
+                              </Markdown>
+                            </div>
+                            {m.sources?.map((source: any) => (
+                              <a
+                                className="citation"
+                                key={source.chunk_id}
+                                href={source.url}
+                                target="_blank"
+                                rel="noreferrer"
+                              >
+                                {source.name} ·{" "}
+                                {source.page
+                                  ? `p. ${source.page}`
+                                  : "legado sem página"}{" "}
+                                · trecho {source.position + 1} ↗
+                              </a>
+                            ))}
                             {m.role === "assistant" && !m.partial && (
                               <div className="toolbar">
                                 <button
@@ -558,6 +686,38 @@ function App() {
                                   }
                                 >
                                   <Volume2 size={14} /> Ouvir
+                                </button>
+                                <button
+                                  className="text-button"
+                                  onClick={() =>
+                                    void navigator.clipboard
+                                      .writeText(m.content)
+                                      .catch(() =>
+                                        setError(
+                                          "Não foi possível copiar a resposta.",
+                                        ),
+                                      )
+                                  }
+                                >
+                                  Copiar
+                                </button>
+                                <button
+                                  className="text-button"
+                                  disabled={busy}
+                                  onClick={() => {
+                                    const last = [...messages.slice(0, i)]
+                                      .reverse()
+                                      .find((m) => m.role === "user");
+                                    if (last)
+                                      void send(
+                                        {
+                                          preventDefault: () => {},
+                                        } as React.FormEvent,
+                                        last.content,
+                                      );
+                                  }}
+                                >
+                                  Regenerar
                                 </button>
                                 <button
                                   className="text-button"
@@ -573,7 +733,7 @@ function App() {
                       {busy && (
                         <div className="stream-status" role="status">
                           {state === "thinking"
-                            ? "Aguardando tokens do modelo local…"
+                            ? "Aguardando o provedor remoto…"
                             : "Recebendo resposta…"}
                         </div>
                       )}
@@ -587,8 +747,14 @@ function App() {
                         </summary>
                         {sources.map((s, i) => (
                           <p key={i}>
-                            {s.name} · trecho {s.position + 1}:{" "}
-                            {s.content.slice(0, 200)}
+                            <a href={s.url} target="_blank" rel="noreferrer">
+                              {s.name} ·{" "}
+                              {s.page
+                                ? `página ${s.page}`
+                                : "página não disponível"}{" "}
+                              · trecho {s.position + 1}
+                            </a>
+                            : {s.content.slice(0, 200)}
                           </p>
                         ))}
                         {memoryIds.map((id) => (
@@ -598,6 +764,29 @@ function App() {
                           Fontes recuperadas não garantem que cada afirmação
                           esteja fundamentada.
                         </small>
+                      </details>
+                    )}
+                    {toolEvents.length > 0 && (
+                      <details className="sources">
+                        <summary>
+                          Consultas e operações desta resposta (
+                          {toolEvents.length})
+                        </summary>
+                        {toolEvents.map((event, i) => (
+                          <div key={i}>
+                            <strong>{event.tool}</strong>
+                            <p>
+                              {event.result.approval_required
+                                ? "Aguardando aprovação — não executada"
+                                : event.result.executed
+                                  ? "Resultado recebido e registrado"
+                                  : "Não foi possível confirmar"}
+                            </p>
+                            <pre className="tool-result">
+                              {JSON.stringify(event.result, null, 2)}
+                            </pre>
+                          </div>
+                        ))}
                       </details>
                     )}
                     <form className="composer" onSubmit={send}>
@@ -634,7 +823,9 @@ function App() {
                             onClick={() =>
                               audio.listening
                                 ? audio.stopMic()
-                                : void audio.startMic()
+                                : void audio.startMic(
+                                    prefs?.privacy.wakeWordEnabled,
+                                  )
                             }
                           >
                             <Mic size={17} />
@@ -714,13 +905,19 @@ function App() {
                       · Voz do navegador pode usar serviços externos.
                     </div>
                   </section>
+                  <Approvals notify={setError} compact />
                 </>
               }
             />
             <Route path="/memory" element={<Memories notify={setError} />} />
             <Route
               path="/knowledge"
-              element={<Knowledge notify={setError} />}
+              element={
+                <Smolin
+                  notify={setError}
+                  collectionName={prefs?.collectionName || "Smoln"}
+                />
+              }
             />
             <Route
               path="/voices"
@@ -735,6 +932,8 @@ function App() {
                 )
               }
             />
+            <Route path="/agenda" element={<Agenda notify={setError} />} />
+            <Route path="/tools" element={<Tools notify={setError} />} />
             <Route path="/activity" element={<Activity notify={setError} />} />
             <Route
               path="/evaluation"
@@ -793,7 +992,7 @@ function App() {
         <footer className="site-footer">
           <span>SALY INTELLIGENCE</span>
           <span>Seu contexto. Sua inteligência.</span>
-          <span>v0.1 · LOCAL FIRST</span>
+          <span>v0.2 · MEMÓRIA CONTÍNUA</span>
         </footer>
       </div>
     </div>

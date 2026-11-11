@@ -41,8 +41,22 @@ export type SalyState =
   | "speaking"
   | "paused"
   | "executing"
-  | "error";
+  | "error"
+  | "transcribing"
+  | "searching"
+  | "reading_document"
+  | "executing_tool"
+  | "success"
+  | "offline";
 export type Prefs = {
+  collectionName?: string;
+  notifications?: {
+    enabled: boolean;
+    quietStart: string;
+    quietEnd: string;
+    timezone: string;
+    minimumImportance: number;
+  };
   voice: {
     voiceURI: string;
     rate: number;
