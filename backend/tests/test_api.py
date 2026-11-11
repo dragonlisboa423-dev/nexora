@@ -683,3 +683,73 @@ def test_stale_local_approval_does_not_delete_updated_memory(client):
         == 502
     )
     assert store.get("memories", m["id"])["content"] == "Revisado depois da proposta"
+
+
+def test_model_agent_connection_uses_memory_document_and_reminder_results(client, monkeypatch):
+    m = memory(client, content="Genetica exige exemplos práticos")
+    d = wait_document(
+        client, upload(client, b"Genetica: DNA e hereditariedade", "genetica.txt")["id"]
+    )
+    store.save(
+        "reminders",
+        {
+            "title": "Revisar genetica",
+            "due_at": "2026-11-12T17:00:00+00:00",
+            "timezone": "America/Sao_Paulo",
+            "done": False,
+        },
+    )
+    fake = FakeProvider(("list_reminders", {}))
+    monkeypatch.setattr(main, "provider", fake)
+    consent(client)
+    response = client.post(
+        "/api/chat", json={"message": "Explique genetica e minha próxima revisão"}
+    )
+    events = [json.loads(line) for line in response.text.splitlines()]
+    assert events[-1]["type"] == "done"
+    context = next(e for e in events if e["type"] == "context" and e["memory_ids"])
+    assert context["memory_ids"] == [m["id"]] and context["sources"][0]["id"] == d["id"]
+    assert "Genetica exige exemplos práticos" in fake.seen[0][0]["content"]
+    assert "DNA e hereditariedade" in fake.seen[0][0]["content"]
+    assert "Revisar genetica" in fake.seen[1][-1]["content"]
+
+
+def test_agent_cannot_bypass_disabled_memory_and_document_context(client, monkeypatch):
+    memory(client, content="SEGREDO: genetica pessoal")
+    prefs = client.get("/api/settings").json()
+    prefs["privacy"].update(remoteConsent=True, useMemory=False, useKnowledge=False)
+    client.put("/api/settings", json=prefs)
+    fake = FakeProvider(("search_memory", {"query": "genetica"}))
+    monkeypatch.setattr(main, "provider", fake)
+    response = client.post("/api/chat", json={"message": "Genetica"})
+    events = [json.loads(line) for line in response.text.splitlines()]
+    assert events[-1]["type"] == "done"
+    assert not next(e for e in events if e["type"] == "tool")["result"]["executed"]
+    assert "SEGREDO" not in json.dumps(fake.seen)
+
+
+def test_authenticated_connection_probe_has_no_personal_context(client, monkeypatch):
+    import httpx
+
+    from backend.tests.test_connection import model_transport
+
+    memory(client, content="PRIVATE_CONNECTION_SENTINEL")
+    monkeypatch.setattr(main.provider, "key", "test-only-connection-key")
+    monkeypatch.setattr(main.provider, "model", "test-model")
+    seen = []
+
+    def handler(request):
+        seen.append(request)
+        return model_transport(request)
+
+    monkeypatch.setattr(
+        main.provider, "client", lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    )
+    response = client.post("/api/system/test-connection", json={})
+    assert response.status_code == 200, response.text
+    assert response.json()["agent"] is True
+    assert "PRIVATE_CONNECTION_SENTINEL" not in "".join(r.content.decode() for r in seen)
+    assert client.get("/api/conversations").json() == []
+    assert client.get("/api/health").json()["agent"]["last_verification"]["tool_result"] == 4
+    client.cookies.clear()
+    assert client.post("/api/system/test-connection", json={}).status_code == 401

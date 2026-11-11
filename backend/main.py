@@ -16,6 +16,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from . import storage as store
 from .agent.registry import REGISTRY, availability, decide, request_tool, schemas
+from .llm.connection import verify_connection
 from .llm.provider import Provider, ProviderError
 from .memory import index_memory, search_memories
 from .security import COOKIE, owner, throttle, unlock
@@ -258,7 +259,32 @@ async def health(_=Depends(owner)):
         "database": store.engine.dialect.name,
         "embeddings_configured": smolin.embedding_provider.configured,
         "single_owner": True,
+        "agent": {
+            "name": "Agente Saly",
+            "included": True,
+            "tools_available": sum(bool(availability(name)) for name in REGISTRY),
+            "last_verification": getattr(provider, "last_probe", None),
+            "modules": ["chat", "memory", "smolin", "reminders", "tools"],
+            "billing": "Nenhuma assinatura adicional do agente; uso sujeito à cota do provedor.",
+        },
     }
+
+
+@app.post("/api/system/test-connection")
+async def test_connection(_=Depends(owner)):
+    throttle("test-model", 3)
+    try:
+        result = await verify_connection(provider)
+        store.audit("model_connection", "Modelo, streaming e ferramenta do agente verificados")
+        return result
+    except (ProviderError, TimeoutError) as error:
+        store.audit("model_connection_error", "Conexão do modelo não confirmada")
+        raise HTTPException(
+            error.status if isinstance(error, ProviderError) else 504,
+            error.detail
+            if isinstance(error, ProviderError)
+            else "Tempo limite ao verificar modelo e agente",
+        ) from None
 
 
 @app.get("/api/memories")
@@ -590,12 +616,17 @@ async def chat(body: Chat, request: Request, _=Depends(owner)):
                     + bounded
                     + [{"role": "user", "content": body.message}]
                 )
+                tool_schemas = schemas(
+                    use_memory=prefs["privacy"].get("useMemory", True),
+                    use_knowledge=prefs["privacy"].get("useKnowledge", True),
+                )
+                allowed_tools = {entry["function"]["name"] for entry in tool_schemas}
                 for step in range(min(5, int(os.environ.get("SALY_AGENT_MAX_STEPS", "4")))):
                     calls = {}
                     turn_text = ""
                     done = False
                     yield json.dumps({"type": "state", "state": "thinking"}) + "\n"
-                    async for event in provider.stream(turns, schemas()):
+                    async for event in provider.stream(turns, tool_schemas):
                         if await request.is_disconnected():
                             return
                         if event.get("text"):
@@ -640,6 +671,8 @@ async def chat(body: Chat, request: Request, _=Depends(owner)):
                             + "\n"
                         )
                         try:
+                            if name not in allowed_tools:
+                                raise ValueError("Ferramenta desativada ou indisponível")
                             result = await request_tool(
                                 name, json.loads(call["function"]["arguments"]), conversation["id"]
                             )

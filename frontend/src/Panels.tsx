@@ -1,3 +1,4 @@
+import { ModelConnection } from "./ModelConnection";
 import { useEffect, useState } from "react";
 import { api, post, put, download, type Prefs } from "./api";
 export function Memories({ notify }: { notify: (s: string) => void }) {
@@ -816,6 +817,9 @@ export function SettingsPanel({
             Exportar meus dados
           </button>
         </div>
+      )}
+      {(!section || section === "system") && (
+        <ModelConnection health={health} />
       )}
       {(!section || section === "system") && (
         <div className="card">

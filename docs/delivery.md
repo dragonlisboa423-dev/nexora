@@ -75,3 +75,9 @@ Resultados e distinção entre testes reais, controlados e não executados estã
 Ainda dependem de configuração/validação: geração remota real com streaming/cancelamento, qualidade de português e ferramentas do modelo escolhido, encoder multilíngue real, Supabase hospedado, quotas/custo gratuito verificados, integração GitHub/web com credenciais reais, voz e reconhecimento físicos. Ainda não implementados: OCR automático, push/agendador externo, recorrência, integração de calendário externo, backend de embeddings hospedado pelo próprio projeto, extração avançada de tabelas, OAuth da proprietária, fila distribuída/durável para funções efêmeras e avaliação factual ampla.
 
 O teste adversarial comprova a barreira de aprovação, não a invulnerabilidade universal a prompt injection. O verificador confere fontes reconhecidas e operações confirmadas, não garante verdade universal. Dados privados exigem backup, retenção e proteção do volume.
+
+## Conexão guiada posterior
+
+`backend/connect_model.py`, `backend/llm/connection.py` e `scripts/connect-model.sh` agora oferecem ativação por terminal privado com teste real do protocolo de modelo e ferramenta antes de salvar a chave. Configurações → Sistema inclui um diagnóstico autenticado do modelo/agente. O agente usa o mesmo provedor, sem assinatura adicional. O código respeita os controles de memória/documentos também nas ferramentas chamadas pelo modelo, impedindo que uma chamada estruturada ignore a recuperação desativada.
+
+Ainda é necessário fornecer uma chave válida da conta da proprietária no servidor onde a aplicação está rodando. Os segredos do Codespaces não são automaticamente compartilhados com este ambiente Codex. Crie/configure a chave em campo privado; não a envie em chat. Não houve ativação real sem essa credencial.

@@ -40,6 +40,32 @@ O comando `owner` pede uma senha de pelo menos 12 caracteres de forma oculta. N�
 
 Para HTTP em computador local, use `SALY_SECURE_COOKIE=0`. Em HTTPS/produção, use `1`. Não exponha uma implantação sem HTTPS e acesso privado configurado. `.env` é lido pelo backend, CLI e servidor sem substituir variáveis já injetadas no processo.
 
+## Conectar o modelo e o agente em um comando
+
+No terminal privado do Codespaces, com a instalação concluída:
+
+```bash
+bash scripts/connect-model.sh
+```
+
+O comando pede a chave de forma oculta, verifica o modelo, recebe streaming, executa `calculate` com `2+2` e confirma que o modelo utiliza o resultado. Somente após sucesso grava a configuração no `.env`, com modo 0600 e sem sobrescrever outras configurações. Não imprime a chave e não envia documentos ou memórias nesse teste.
+
+Crie a chave em [Groq Console](https://console.groq.com/keys), usando a modalidade gratuita da sua conta e verificando suas quotas. **O Agente Saly já está incluído no código; não exige outra assinatura ou chave de agente.** As chamadas ao modelo continuam sujeitas à quota/plano do provedor; a aplicação não cadastra cartão nem ativa faturamento.
+
+Se você já configurou `GROQ_API_KEY` nos Secrets do Codespaces, ela é reconhecida para o endpoint Groq sem ser copiada para arquivo. `SALY_LLM_API_KEY` continua tendo prioridade. Para apenas verificar, sem gravar nada:
+
+```bash
+bash scripts/connect-model.sh --check
+```
+
+Para escolher explicitamente outro modelo anunciado pela conta, use `--model IDENTIFICADOR`. Não há substituição silenciosa de modelo. Pare o servidor antigo com Ctrl+C e reinicie depois da configuração:
+
+```bash
+SALY_SECURE_COOKIE=1 bash scripts/start.sh
+```
+
+Em Configurações → Sistema, **Testar conexão e agente** faz o mesmo diagnóstico curto, com a chave mantida somente no servidor. O chat usa a memória, os documentos, a agenda e as ferramentas já conectadas, respeitando os controles de privacidade e as aprovações. O botão não exibe sucesso quando há chave ausente, erro de rede, cota excedida ou falha do modelo.
+
 ## Modelo remoto e custo
 
 O adaptador utiliza a API OpenAI-compatible de um único provedor remoto. O candidato inicial é Groq com `llama-3.3-70b-versatile` (pesos abertos da família Meta Llama, sujeito à licença e à disponibilidade do provedor). A tag é **configurável**, e o backend consulta `/models` para verificar sua disponibilidade; não troca de modelo silenciosamente.

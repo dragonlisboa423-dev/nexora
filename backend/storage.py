@@ -129,7 +129,7 @@ def initialize(url=None, check_legacy=True):
         and not (DATA / "saly-v2.sqlite3").exists()
     ):
         raise RuntimeError(
-            "Banco legado detectado. Faça backup e execute python -m backend.manage migrate-legacy data/saly.sqlite3. Nenhum dado foi alterado."
+            "Banco legado detectado. Faça backup e execute:\n.venv/bin/python -m backend.manage migrate-legacy data/saly.sqlite3\nNenhum dado foi alterado."
         )
     if engine is not None:
         engine.dispose()

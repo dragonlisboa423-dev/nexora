@@ -14,3 +14,5 @@ coverage/
 .ruff_cache/
 .tools/
 .venv.previous.*/
+
+.saly-env-*

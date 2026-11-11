@@ -125,7 +125,12 @@ def availability(name):
     )
 
 
-def schemas():
+def schemas(*, use_memory=True, use_knowledge=True):
+    blocked = set()
+    if not use_memory:
+        blocked.add("search_memory")
+    if not use_knowledge:
+        blocked.update(("search_smolin", "list_documents", "get_document_excerpt"))
     return [
         {
             "type": "function",
@@ -136,7 +141,7 @@ def schemas():
             },
         }
         for name, entry in REGISTRY.items()
-        if availability(name)
+        if availability(name) and name not in blocked
     ]
 
 

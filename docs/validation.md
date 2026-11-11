@@ -55,3 +55,9 @@ Preencher a chave pelo campo privado do servidor, permitir o domínio do provedo
 ## Rascunho do ambiente
 
 Foram atualizados `install_script`, `start_skill`, variáveis não secretas de modelo/base URL, requisito de `SALY_LLM_API_KEY` e domínios `api.groq.com`/`console.groq.com`, preservando os domínios personalizados anteriores. O rascunho foi salvo; isso não executa scripts, não aplica rede/chaves e não publica a configuração. A proprietária deve revisar e salvar nas configurações e publicar o ambiente quando desejar uma nova versão reutilizável.
+
+## Atualização de conexão do modelo e agente
+
+Foi adicionado `bash scripts/connect-model.sh`: leitura oculta da chave em terminal privado, verificação de `/models`, duas chamadas curtas de streaming, ferramenta real `calculate(2+2)` e confirmação após devolver o resultado ao modelo. A configuração só é gravada após sucesso, por substituição atômica do `.env` com modo 0600. Bindings existentes não são copiados para arquivo. `GROQ_API_KEY` também é reconhecida, exclusivamente para o host Groq. O painel Sistema pode repetir o diagnóstico autenticado, sem transmitir documentos ou memórias.
+
+Nesta rodada: **63 testes Python passaram, 1 teste PostgreSQL foi pulado por falta de DSN descartável nesta execução**, e 6 testes Vitest passaram. O banco real já foi exercitado na rodada v2 acima. Build/Ruff e Chromium passaram. Testes adicionais verificaram o fluxo único modelo → memória/documento → agenda/ferramenta → resposta, privacidade desativada, proteção da chave e falha sem falso sucesso. O transporte do provedor permaneceu controlado nos testes; nenhuma chave real estava presente no ambiente, e `connect-model.sh --check` confirmou a configuração pendente. Isso não comprova inferência real no Codespaces da proprietária.
