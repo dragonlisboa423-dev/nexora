@@ -4,5 +4,5 @@
   "schema_version": "1.0.0",
   "adapter_version": "1.0.0",
   "authorization": "Integração solicitada explicitamente pela proprietária em 2026-11-15; semente original preservada integralmente.",
-  "package_status": "ZIP e CODEX_PROMPT_MASTER.md não encontrados no workspace nem nas branches publicadas consultadas em 2026-11-15; adaptação independente do JSON anexado."
+  "package_status": "Prompt mestre completo recebido em 2026-11-15 e registrado em docs/CODEX_INTEGRATION_PROMPT.md. O ZIP modular SALY_Core_v1 ainda não foi recebido; adaptador da semente JSON existente preservado."
 }

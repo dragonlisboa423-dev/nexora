@@ -64,6 +64,7 @@ for name in [
     "tool_executions",
     "agent_approvals",
     "document_jobs",
+    "core_imports",
 ]:
     tables[name] = Table(
         name,

@@ -1,5 +1,7 @@
 import { ModelConnection } from "./ModelConnection";
 import { Laboratory } from "./Laboratory";
+import { MemoryImport } from "./MemoryImport";
+import { CoreImport } from "./CoreImport";
 import { useEffect, useState } from "react";
 import { api, post, put, download, type Prefs } from "./api";
 export function Memories({ notify }: { notify: (s: string) => void }) {
@@ -101,26 +103,7 @@ export function Memories({ notify }: { notify: (s: string) => void }) {
         >
           Exportar
         </button>
-        <label className="file-button">
-          Importar JSON
-          <input
-            type="file"
-            accept=".json"
-            onChange={async (e) => {
-              try {
-                const f = e.target.files?.[0];
-                if (!f) return;
-                if (f.size > 5_000_000) throw Error("Máximo 5 MB");
-                const data = JSON.parse(await f.text());
-                await post("/memories-import", { memories: data.memories });
-                await load();
-              } catch (e) {
-                notify((e as Error).message);
-              }
-              e.target.value = "";
-            }}
-          />
-        </label>
+        <MemoryImport notify={notify} reload={load} />
         <button
           className="secondary"
           onClick={async () => {
@@ -820,7 +803,10 @@ export function SettingsPanel({
         </div>
       )}
       {(!section || section === "system") && (
-        <ModelConnection health={health} />
+        <>
+          <ModelConnection health={health} />
+          <CoreImport notify={notify} />
+        </>
       )}
       {(!section || section === "system") && (
         <div className="card">

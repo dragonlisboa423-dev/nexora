@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 
 import httpx
 from fastapi import Depends, FastAPI, File, HTTPException, Request, Response, UploadFile
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, select, text
@@ -18,8 +19,10 @@ from . import storage as store
 from .agent.registry import REGISTRY, availability, decide, request_tool, schemas
 from .core import activate as activate_core
 from .core import core_status, policy_prompt, retrieve_principles
+from .core.admin import router as core_admin_router
 from .core.laboratory import run_laboratory
 from .core.policy import context_message
+from .imports import MemoryImport, validation_details
 from .llm.connection import verify_connection
 from .llm.provider import Provider, ProviderError
 from .memory import index_memory, search_memories
@@ -44,6 +47,22 @@ async def lifespan(app):
 
 
 app = FastAPI(title="SALY Intelligence · Centro Smolin", version="0.3.0", lifespan=lifespan)
+
+
+@app.exception_handler(RequestValidationError)
+async def invalid_request(request, error):
+    fields = validation_details(error.errors())
+    response = {
+        "detail": "Confira o formato dos dados: "
+        + "; ".join(f"{f['field']}: {f['message']}" for f in fields),
+        "errors": fields,
+    }
+    if request.url.path.startswith("/api/memories-import"):
+        response["expected"] = {
+            "format": "saly-memory-v2",
+            "memories": [{"content": "Texto da memória", "category": "informacoes"}],
+        }
+    return JSONResponse(response, status_code=422)
 
 
 class BodyLimitMiddleware:
@@ -353,8 +372,14 @@ def export_memories(_=Depends(owner)):
     return {"format": "saly-memory-v2", "memories": store.all_records("memories")}
 
 
-class MemoryImport(BaseModel):
-    memories: list[Memory] = Field(max_length=1000)
+@app.post("/api/memories-import/preview")
+def preview_memory_import(body: MemoryImport, _=Depends(owner)):
+    return {
+        "format": body.format,
+        "count": len(body.memories),
+        "categories": sorted({m.category for m in body.memories}),
+        "notice": "Serão criadas memórias não verificadas, sem relações importadas. Nenhuma ação contida no texto será executada.",
+    }
 
 
 @app.post("/api/memories-import")
@@ -1015,6 +1040,8 @@ def backup(_=Depends(owner)):
         "notice": "Exportação lógica; originais binários e vetores precisam do backup administrativo.",
     }
 
+
+app.include_router(core_admin_router)
 
 DIST = Path(__file__).resolve().parents[1] / "frontend" / "dist"
 

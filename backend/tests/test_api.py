@@ -870,3 +870,64 @@ def test_scientific_tools_reject_invalid_units_via_authenticated_executor(client
     )
     assert result.status_code == 200, result.text
     assert result.json()["executed"] and result.json()["result"]["cost"]["value"] == 2.052
+
+
+def test_memory_import_reports_actual_invalid_fields_without_echoing_private_input(client):
+    result = client.post("/api/memories-import", json={})
+    assert result.status_code == 422
+    assert result.json()["errors"][0]["field"] == "memories"
+    assert result.json()["expected"]["format"] == "saly-memory-v2"
+    result = client.post(
+        "/api/memories-import/preview",
+        json={"memories": [{"content": 123, "secret": "DO_NOT_ECHO"}]},
+    )
+    assert result.status_code == 422 and "memories.0.content" in result.json()["detail"]
+    assert "DO_NOT_ECHO" not in result.text
+    assert client.get("/api/memories").json() == []
+
+
+def test_memory_import_preview_does_not_write_and_export_format_roundtrips(client):
+    payload = {
+        "format": "saly-memory-v2",
+        "memories": [{"content": "Preferência aprovada", "verification": "verified"}],
+    }
+    assert client.post("/api/memories-import/preview", json=payload).json()["count"] == 1
+    assert client.get("/api/memories").json() == []
+    assert client.post("/api/memories-import", json=payload).json()["imported"] == 1
+    assert client.get("/api/memories").json()[0]["verification"] == "unverified"
+    exported = client.get("/api/memories-export").json()
+    assert client.post("/api/memories-import/preview", json=exported).status_code == 200
+
+
+def test_core_json_is_separate_reviewed_backed_up_and_never_personal_memory(client):
+    from backend.core.policy import DATA
+
+    document = json.loads((DATA / "SALY_CORE_MEMORY_v1.json").read_bytes())
+    rejected = client.post("/api/memories-import", json=document)
+    assert rejected.status_code == 422 and "Core Memory" in rejected.text
+    preview = client.post("/api/core/preview", json={"document": document}).json()
+    assert preview["compatible"] and preview["already_active"]
+    assert client.get("/api/memories").json() == []
+    path = "/api/core/imports/" + preview["id"] + "/confirm"
+    assert (
+        client.post(path, json={"confirm": False, "digest": preview["digest"]}).status_code == 400
+    )
+    result = client.post(path, json={"confirm": True, "digest": preview["digest"]})
+    assert result.status_code == 200, result.text
+    assert result.json()["memories_created"] == 0
+    backup = client.get(result.json()["backup_url"])
+    assert backup.status_code == 200 and backup.json()["document"] == document
+    assert (store.DATA / "core-backups" / (preview["id"] + ".json")).stat().st_mode & 0o777 == 0o600
+    assert client.post(path, json={"confirm": True, "digest": preview["digest"]}).status_code == 409
+    document["prioridades_em_ordem"][0] = "Conteúdo externo não revisado"
+    other = client.post("/api/core/preview", json={"document": document}).json()
+    assert not other["compatible"]
+    assert (
+        client.post(
+            "/api/core/imports/" + other["id"] + "/confirm",
+            json={"confirm": True, "digest": other["digest"]},
+        ).status_code
+        == 409
+    )
+    client.cookies.clear()
+    assert client.get(result.json()["backup_url"]).status_code == 401

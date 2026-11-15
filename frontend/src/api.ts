@@ -11,10 +11,26 @@ export async function api(path: string, options: RequestInit = {}) {
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
+    const structured =
+      data.detail &&
+      typeof data.detail === "object" &&
+      !Array.isArray(data.detail)
+        ? data.detail
+        : data;
+    const fields = Array.isArray(structured.errors)
+      ? structured.errors
+          .map(
+            (item: { field?: string; message?: string }) =>
+              `${item.field ?? "arquivo"}: ${item.message ?? "valor inválido"}`,
+          )
+          .join("; ")
+      : "";
     throw new Error(
       typeof data.detail === "string"
         ? data.detail
-        : `Falha na requisição (${res.status})`,
+        : structured.message
+          ? `${structured.message}${fields ? ": " + fields : ""}`
+          : `Falha na requisição (${res.status})`,
     );
   }
   return res.json();
