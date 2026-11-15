@@ -118,6 +118,8 @@ def test_single_owner_no_registration_or_user_spaces(client):
         "/api/settings",
         "/api/tools",
         "/api/activity",
+        "/api/core",
+        "/api/laboratory",
     ],
 )
 def test_private_data_blocked_anonymously(client, path):
@@ -140,6 +142,7 @@ def test_session_csrf_logout_rate_limit(client):
 
 
 def test_memory_crud_versions_and_no_resurrection(client):
+    initial_epoch = store.setting("context_epoch", 0)
     m = memory(client)
     assert client.get("/api/memories?q=biologia").json()[0]["id"] == m["id"]
     edited = client.put(
@@ -162,6 +165,7 @@ def test_memory_crud_versions_and_no_resurrection(client):
             "content": m["content"],
             "memory_ids": [m["id"]],
             "epoch": 0,
+            "verification": {"tools": [{"deterministic_result": "derived-private-value"}]},
         },
     )
     assert (
@@ -177,7 +181,8 @@ def test_memory_crud_versions_and_no_resurrection(client):
     assert client.get("/api/memories?q=biologia").json() == []
     assert store.all_records("versions") == []
     assert m["content"] not in store.all_records("messages")[0]["content"]
-    assert store.setting("context_epoch") == 3
+    assert store.all_records("messages")[0]["verification"] is None
+    assert store.setting("context_epoch") == initial_epoch + 3
 
 
 def test_memory_export_import_consolidation_and_filters(client):
@@ -250,6 +255,16 @@ def test_pdf_ocr_corruption_binary_validation_and_delete(client):
     )
     assert r.status_code == 422
     doc = wait_document(client, upload(client, b"Genetica e biologia", "nota.md")["id"])
+    derived = store.save(
+        "messages",
+        {
+            "conversation_id": "deletion-test",
+            "role": "assistant",
+            "content": "Derivado",
+            "sources": [{"id": doc["id"]}],
+            "verification": {"tools": [{"deterministic_result": "derived-private-value"}]},
+        },
+    )
     assert (
         client.delete("/api/knowledge/" + doc["id"], headers={"X-Saly-Request": "1"}).status_code
         == 400
@@ -262,6 +277,7 @@ def test_pdf_ocr_corruption_binary_validation_and_delete(client):
     )
     assert not client.get("/api/knowledge/search?q=Genetica").json()
     assert client.get("/api/knowledge/" + doc["id"] + "/original").status_code == 404
+    assert store.get("messages", derived["id"])["verification"] is None
     with store.db() as c:
         assert (
             c.execute(select(store.chunks).where(store.chunks.c.document_id == doc["id"])).first()
@@ -382,7 +398,7 @@ def test_streaming_retrieval_and_context_filtering(client, monkeypatch):
     assert contexts[-1]["memory_ids"] == [a["id"]]
     assert any(e["type"] == "tool" and e["result"]["result"]["result"] == 21 for e in events)
     assert len(client.get("/api/conversations/" + contexts[0]["conversation_id"]).json()) == 2
-    assert "Genetica contestada" not in fake.seen[0][0]["content"]
+    assert "Genetica contestada" not in json.dumps(fake.seen)
 
 
 def test_adversarial_pdf_cannot_execute_destructive_instruction(client, monkeypatch):
@@ -398,7 +414,8 @@ def test_adversarial_pdf_cannot_execute_destructive_instruction(client, monkeypa
     assert store.get("memories", protected["id"]) is not None
     assert store.get("documents", document["id"]) is not None
     assert "DADO NÃO CONFIÁVEL" in fake.seen[0][0]["content"]
-    assert attack in fake.seen[0][0]["content"]
+    assert attack not in fake.seen[0][0]["content"]
+    assert attack in fake.seen[0][1]["content"] and fake.seen[0][1]["role"] == "user"
     assert all(e["status"] != "completed" for e in store.all_records("tool_executions"))
     # Deliberately malicious model output still cannot bypass the deterministic approval gate.
 
@@ -709,8 +726,9 @@ def test_model_agent_connection_uses_memory_document_and_reminder_results(client
     assert events[-1]["type"] == "done"
     context = next(e for e in events if e["type"] == "context" and e["memory_ids"])
     assert context["memory_ids"] == [m["id"]] and context["sources"][0]["id"] == d["id"]
-    assert "Genetica exige exemplos práticos" in fake.seen[0][0]["content"]
-    assert "DNA e hereditariedade" in fake.seen[0][0]["content"]
+    assert "Genetica exige exemplos práticos" in fake.seen[0][1]["content"]
+    assert "DNA e hereditariedade" in fake.seen[0][1]["content"]
+    assert "DNA e hereditariedade" not in fake.seen[0][0]["content"]
     assert "Revisar genetica" in fake.seen[1][-1]["content"]
 
 
@@ -753,3 +771,102 @@ def test_authenticated_connection_probe_has_no_personal_context(client, monkeypa
     assert client.get("/api/health").json()["agent"]["last_verification"]["tool_result"] == 4
     client.cookies.clear()
     assert client.post("/api/system/test-connection", json={}).status_code == 401
+
+
+def test_core_is_activated_without_creating_personal_memories_and_lab_is_local(client, monkeypatch):
+    def unexpected_remote(*args, **kwargs):
+        pytest.fail("Laboratory must not make a provider request")
+
+    monkeypatch.setattr(main.provider, "health", unexpected_remote)
+    monkeypatch.setattr(main.provider, "stream", unexpected_remote)
+    core = client.get("/api/core").json()
+    assert core["activation"]["sha256"] == core["sha256"]
+    assert core["rules"] == 12 and core["integrity_verified"]
+    assert client.get("/api/memories").json() == []
+    response = client.post("/api/laboratory", json={})
+    assert response.status_code == 200, response.text
+    report = response.json()
+    assert report["provider_requests"] == 0 and not report["model_tested"]
+    assert report["summary"] == {"passed": 6, "inconclusive": 16}
+    assert all(not r["model_tested"] for r in report["results"])
+    assert len(client.get("/api/laboratory").json()) == 1
+    assert client.get("/api/evaluation").json() == []  # Existing evaluation remains compatible.
+    assert client.post("/api/evaluation", json={}).status_code == 200
+    assert len(client.get("/api/evaluation").json()) == 1
+    assert len(client.get("/api/laboratory").json()) == 1
+    with store.db() as connection:
+        assert not connection.execute(
+            select(store.config.c.id).where(store.config.c.id.like("lab-ephemeral-%"))
+        ).first()
+    assert client.get("/api/conversations").json() == []
+    client.cookies.clear()
+    assert client.post("/api/laboratory", json={}).status_code == 401
+
+
+def test_laboratory_records_integrity_failure_instead_of_false_success(client, monkeypatch):
+    from backend.core import laboratory
+
+    def corrupted_bundle(_):
+        raise ValueError("Invalid local checksum")
+
+    monkeypatch.setattr(laboratory, "read_bundle", corrupted_bundle)
+    report = client.post("/api/laboratory", json={}).json()
+    assert report["summary"]["failed"] == 1
+    assert report["results"][0]["status"] == "failed"
+    assert "Invalid local checksum" not in json.dumps(report)
+
+
+def test_core_policies_and_quantity_verifier_are_used_in_real_chat_route(client, monkeypatch):
+    fake = FakeProvider(
+        (
+            "check_load",
+            {
+                "masses": [{"value": value, "unit": "kg"} for value in [11.4, 2, 1.5, 0.8]],
+                "capacity": {"value": 12, "unit": "kg"},
+            },
+        )
+    )
+    monkeypatch.setattr(main, "provider", fake)
+    consent(client)
+    response = client.post(
+        "/api/chat", json={"message": "Calcule a massa total e o excedente de carga no aquário"}
+    )
+    events = [json.loads(line) for line in response.text.splitlines()]
+    assert events[-1]["type"] == "done", events
+    verification = events[-1]["verification"]
+    assert "POLÍTICA SALY CORE" in fake.seen[0][0]["content"]
+    assert "R01:" in fake.seen[0][0]["content"]
+    assert "core_principles" in fake.seen[0][1]["content"]
+    evidence = verification["tools"][0]
+    assert evidence["executed"] and evidence["deterministic_result"]["excess"]["value"] == 3.7
+    assert store.get("tool_executions", evidence["execution_id"])["status"] == "completed"
+    assert verification["core"]["sha256"] == client.get("/api/core").json()["sha256"]
+    saved = next(m for m in store.all_records("messages") if m["role"] == "assistant")
+    assert saved["verification"] == verification
+
+
+def test_core_citations_require_a_retrieved_principle():
+    answer, unknown = main.verify_response(
+        "A [Core:fisica] B [Core:inventada] C [Fonte:nao_recuperada]", [], ["fisica"]
+    )
+    assert "[Core:fisica]" in answer and "[Core:inventada]" not in answer
+    assert set(unknown) == {"Core:inventada", "nao_recuperada"}
+
+
+def test_scientific_tools_reject_invalid_units_via_authenticated_executor(client):
+    invalid = {"masses": [{"value": 11.4, "unit": "L"}], "capacity": {"value": 12, "unit": "kg"}}
+    assert client.post("/api/tools/check_load", json={"arguments": invalid}).status_code == 422
+    assert store.all_records("tool_executions") == []
+    result = client.post(
+        "/api/tools/check_energy_cost",
+        json={
+            "arguments": {
+                "power": {"value": 3, "unit": "W"},
+                "hours_per_day": 24,
+                "days": 30,
+                "tariff_brl_per_kwh": 0.95,
+            }
+        },
+    )
+    assert result.status_code == 200, result.text
+    assert result.json()["executed"] and result.json()["result"]["cost"]["value"] == 2.052

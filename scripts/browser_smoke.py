@@ -174,6 +174,23 @@ with sync_playwright() as p:
     page.get_by_role("button", name="Executar ou propor", exact=True).click()
     page.locator(".tool-result").filter(has_text="14").wait_for()
     page.goto("http://127.0.0.1:8001/evaluation")
+    page.get_by_role("heading", name="Laboratório SALY", exact=True).wait_for()
+    page.get_by_role("button", name="Executar testes locais · sem API").click()
+    report = page.get_by_role("article", name="Relatório do laboratório").first
+    report.get_by_role("status").filter(
+        has_text="6 passaram · 0 falharam · 16 inconclusivos"
+    ).wait_for()
+    with page.expect_download() as download_event:
+        report.get_by_role("button", name="Exportar relatório JSON").click()
+    downloaded = json.loads(Path(download_event.value.path()).read_text())
+    assert downloaded["provider_requests"] == 0 and not downloaded["model_tested"]
+    assert len(downloaded["results"]) == 22
+    Path("/tmp/saly-core-lab-report.json").write_text(
+        json.dumps(downloaded, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    page.screenshot(path="/tmp/saly-core-laboratory-desktop.png", full_page=True)
+    page.reload()
+    page.get_by_role("article", name="Relatório do laboratório").first.wait_for()
     page.get_by_role("button", name="Executar avaliação", exact=True).click()
     page.get_by_text("8/8", exact=True).wait_for()
     for route, heading in [
@@ -194,6 +211,13 @@ with sync_playwright() as p:
     page.get_by_role("button", name="Alternar menu").click()
     page.get_by_role("link", name="Memórias", exact=True).click()
     page.get_by_role("heading", name="Memórias", exact=True).wait_for()
+    page.goto("http://127.0.0.1:8001/evaluation")
+    page.get_by_role("article", name="Relatório do laboratório").first.wait_for()
+    page.locator('section[aria-label="Laboratório SALY"] details').evaluate_all(
+        "items => items.forEach(item => item.open = true)"
+    )
+    assert page.evaluate("document.documentElement.scrollWidth<=window.innerWidth")
+    page.screenshot(path="/tmp/saly-core-laboratory-mobile.png")
     page.evaluate("navigator.serviceWorker.ready.then(()=>true)")
     page.reload()
     caches = page.evaluate(
@@ -218,6 +242,7 @@ with sync_playwright() as p:
                     "reminder approval and execution",
                     "real calculator",
                     "evaluation",
+                    "Core laboratory with real checks, persisted report and JSON download; no model requests",
                     "privacy/settings",
                     "2D fallback",
                     "mobile layout/navigation",

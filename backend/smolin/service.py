@@ -421,6 +421,7 @@ def delete_document(key):
                     **message,
                     "content": "[Resposta derivada de documento excluído removida.]",
                     "sources": [],
+                    "verification": None,
                 },
                 message["id"],
             )

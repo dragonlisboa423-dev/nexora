@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import update
 
 from .. import storage as store
+from ..core.quantities import EnergyCheck, LoadCheck, check_energy_cost, check_load
 from ..integrations import integrations
 from ..memory import index_memory, search_memories
 from ..services import Memory, memory_delete, memory_save
@@ -80,6 +81,18 @@ class Calculation(Args):
 # name: (schema, description, approval required, integration)
 REGISTRY = {
     "calculate": (Calculation, "Calcular aritmética sem executar código.", False, None),
+    "check_load": (
+        LoadCheck,
+        "Verificar soma de massas (g/kg), capacidade declarada e excesso em kg. Não confundir limite de carga com massa de um componente nem com volume de água.",
+        False,
+        None,
+    ),
+    "check_energy_cost": (
+        EnergyCheck,
+        "Verificar energia teórica em kWh e custo em BRL por potência W/kW, horas/dia, dias e tarifa BRL/kWh. Não é medição do consumo real.",
+        False,
+        None,
+    ),
     "search_memory": (Query, "Consultar a memória global autorizada.", False, None),
     "save_memory": (SaveMemory, "Propor gravação na memória única; exige aprovação.", True, None),
     "update_memory": (UpdateMemory, "Propor correção de uma memória; exige aprovação.", True, None),
@@ -171,6 +184,10 @@ def normalized_reminder(args):
 
 async def execute(name, args):
     args = validate(name, args)
+    if name == "check_load":
+        return check_load(args)
+    if name == "check_energy_cost":
+        return check_energy_cost(args)
     if name == "calculate":
         return {"result": calculate(args["expression"]), "method": "bounded_ast"}
     if name == "search_memory":
@@ -298,12 +315,17 @@ async def request_tool(name, args, conversation_id=None):
             {**execution, "status": "approval_required", "approval_id": approval["id"]},
             execution["id"],
         )
-        return {"approval_required": True, "approval_id": approval["id"], "executed": False}
+        return {
+            "approval_required": True,
+            "approval_id": approval["id"],
+            "execution_id": execution["id"],
+            "executed": False,
+        }
     try:
         result = await execute(name, validated)
         store.save("tool_executions", {**execution, "status": "completed"}, execution["id"])
         store.audit("tool", "Consulta concluída: " + name)
-        return {"executed": True, "result": result}
+        return {"executed": True, "result": result, "execution_id": execution["id"]}
     except asyncio.CancelledError:
         store.save("tool_executions", {**execution, "status": "cancelled"}, execution["id"])
         raise

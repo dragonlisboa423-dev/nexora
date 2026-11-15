@@ -6,6 +6,8 @@ Não existe cadastro público, seleção de contas ou memória por usuário. Um 
 
 A aplicação e suas ferramentas locais foram implementadas e testadas. Inferência com um provedor real, qualidade de embeddings reais e hospedagem Supabase ainda dependem de credenciais/serviços que não foram fornecidos. Veja [validação](docs/validation.md) e o [relatório técnico](docs/delivery.md); isso não é uma afirmação de que todos os critérios finais já foram atendidos.
 
+A etapa Core de 2026-11-15 integra o JSON anexado ao prompt, adiciona verificadores científicos com unidades e evidências por resposta, e inclui o **Laboratório SALY** dentro de **Avaliação**, com testes locais e exportação de resultados. Consulte [implementação e limites da etapa](docs/core-phase-1.md) e [Android, HTTPS e modo avião](docs/android-offline.md). O ZIP e o prompt mestre citados ainda não estavam nas branches publicadas consultadas; a integração completa do pacote permanece pendente.
+
 ## Iniciar no Codespaces
 
 Abra o terminal do Codespaces e use o checkout existente:

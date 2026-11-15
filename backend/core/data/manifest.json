@@ -1,0 +1,8 @@
+{
+  "file": "SALY_CORE_MEMORY_v1.json",
+  "sha256": "8e9ff45e4d8a9793454d9c0442f3180c377314b79fcb443bbb811847b613fcbc",
+  "schema_version": "1.0.0",
+  "adapter_version": "1.0.0",
+  "authorization": "Integração solicitada explicitamente pela proprietária em 2026-11-15; semente original preservada integralmente.",
+  "package_status": "ZIP e CODEX_PROMPT_MASTER.md não encontrados no workspace nem nas branches publicadas consultadas em 2026-11-15; adaptação independente do JSON anexado."
+}

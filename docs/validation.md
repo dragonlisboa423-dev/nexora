@@ -1,5 +1,9 @@
 # Evidências de validação · 11/11/2026
 
+## Atualização Core · 15/11/2026
+
+97 testes Python passaram, 1 PostgreSQL foi pulado (DSN descartável ausente); 6 Vitest, TypeScript/Vite e Ruff passaram. Chromium confirmou laboratório com seis verificações locais reais, 16 testes do modelo explicitamente inconclusivos, relatório JSON exportável/persistido e os fluxos anteriores sem erros de página. O teste de reinício usou dois processos e um banco temporário. A exclusão de memória/documento também remove a nova evidência de suas respostas derivadas identificadas. O laboratório não efetuou chamadas ao provedor. A entrega, a auditoria do material ausente e os limites estão em [core-phase-1.md](core-phase-1.md); instruções HTTPS/Android/modo avião em [android-offline.md](android-offline.md). A execução desta etapa não certifica o novo fluxo com a chave real do Codespaces.
+
 A implementação v2 foi verificada no ambiente Codex, em SQLite e PostgreSQL/pgvector descartável. **Não se considera a assistente integralmente validada em produção:** modelo remoto real, encoder real, credenciais de integrações, Supabase hospedado e áudio físico continuam pendentes.
 
 ## Checks executados

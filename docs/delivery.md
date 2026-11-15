@@ -1,5 +1,7 @@
 # Entrega técnica · SALY v2 · 11/11/2026
 
+Atualização de 15/11/2026: entregue uma etapa independente de Core Memory, verificadores científicos e Laboratório sobre a base existente, preservando interface e funcionalidades. A semente JSON foi recebida; ZIP/prompt mestre não estavam nas branches publicadas consultadas. Veja [relatório da etapa, testes e bloqueios](core-phase-1.md) e [Android/HTTPS/offline](android-offline.md). A descrição v2 abaixo permanece como histórico.
+
 ## Diagnóstico
 
 A `main` do repositório continha apenas o README inicial. A implementação anterior estava na branch publicada `feat/saly-intelligence`, commit `f9d7859`. Ela tinha React/R3F, FastAPI, SQLite por usuário, cadastro inicial e dependência de um motor local. A nova branch `feat/saly-smolin` parte desse histórico, preservando-o; não houve reset, force-push ou remoção de dados fornecidos pela proprietária.

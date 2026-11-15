@@ -1,4 +1,5 @@
 import { ModelConnection } from "./ModelConnection";
+import { Laboratory } from "./Laboratory";
 import { useEffect, useState } from "react";
 import { api, post, put, download, type Prefs } from "./api";
 export function Memories({ notify }: { notify: (s: string) => void }) {
@@ -1081,8 +1082,9 @@ export function Evaluation({ notify }: { notify: (s: string) => void }) {
       <PageTitle
         eyebrow="EVIDÊNCIAS, NÃO PROMESSAS"
         title="Avaliação"
-        text="Testes determinísticos de aritmética, limites de ferramentas e integridade SQLite. Estes resultados não medem a precisão linguística do modelo."
+        text="Laboratório e histórico de verificações reais. Os testes locais não medem a precisão linguística do modelo."
       />
+      <Laboratory notify={notify} />
       <button
         disabled={busy}
         onClick={async () => {

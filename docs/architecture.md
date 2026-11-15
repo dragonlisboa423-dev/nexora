@@ -18,6 +18,8 @@ Originais estão em BLOB/BYTEA privado no banco, não em Storage separado. O RLS
 
 ## Modelo, agente e memória
 
+Na versão 0.3, `backend/core/` adapta a semente JSON recebida: manifesto/hash/schema, ativação idempotente em `app_config`, regras no prompt, recuperação lexical de princípios científicos e verificadores dimensionais tipados no agente. A semente não é importada como memória pessoal. Conteúdo recuperado é uma mensagem de dados separada do sistema. Respostas guardam versões, fontes e IDs/resultados reais das ferramentas; a exclusão de memória/documento também retira essa evidência das respostas derivadas identificadas. O Laboratório persiste relatórios locais em `evaluations` com `kind` próprio, preservando a avaliação anterior. Veja `core-phase-1.md` para alcance, testes e pacote ainda ausente.
+
 `backend/llm/provider.py` transmite SSE OpenAI-compatible de um único modelo, validando disponibilidade via `/models`. Retry é limitado a respostas recusadas antes de transmitir geração. Depois do primeiro token não há replay silencioso. Nenhuma ferramenta é executada por texto livre: só chamadas estruturadas em registro tipado, com limite de argumentos, etapas e duração.
 
 O contexto combina memórias utilizáveis, documentos recuperados e histórico limitado em caracteres. Memória e conhecimento são responsabilidades separadas; PDFs não são copiados para preferências. Exclusões removem índices/representações derivadas identificadas, expiram aprovações e incrementam `context_epoch`. Prompts não usam mensagens de epochs anteriores; uma geração interrompida por mudança de contexto não é salva como concluída. Históricos independentes e backups antigos não são apagados indiscriminadamente.

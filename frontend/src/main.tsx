@@ -47,6 +47,7 @@ import { Smolin } from "./Smolin";
 import { Approvals, Agenda, Tools, ReminderAlerts } from "./AgentPanels";
 import { emit, transition, useOperations } from "./operations";
 import { PwaUpdate } from "./pwa";
+import { VerificationDetails, type Verification } from "./Laboratory";
 const labels: Record<SalyState, string> = {
   idle: "Em repouso",
   listening: "Escutando",
@@ -68,6 +69,7 @@ type Message = {
   content: string;
   partial?: boolean;
   sources?: any[];
+  verification?: Verification;
 };
 function Login({ done }: { done: () => void }) {
   const [setup, setSetup] = useState<boolean | null>(null),
@@ -321,7 +323,12 @@ function App() {
             answer = event.content ?? answer;
             setMessages((m) => [
               ...(begun ? m.slice(0, -1) : m),
-              { role: "assistant", content: answer, sources: currentSources },
+              {
+                role: "assistant",
+                content: answer,
+                sources: currentSources,
+                verification: event.verification,
+              },
             ]);
             begun = true;
           }
@@ -676,6 +683,11 @@ function App() {
                                 · trecho {source.position + 1} ↗
                               </a>
                             ))}
+                            {m.verification && (
+                              <VerificationDetails
+                                verification={m.verification}
+                              />
+                            )}
                             {m.role === "assistant" && !m.partial && (
                               <div className="toolbar">
                                 <button
@@ -992,7 +1004,7 @@ function App() {
         <footer className="site-footer">
           <span>SALY INTELLIGENCE</span>
           <span>Seu contexto. Sua inteligência.</span>
-          <span>v0.2 · MEMÓRIA CONTÍNUA</span>
+          <span>v0.3 · MEMÓRIA CONTÍNUA</span>
         </footer>
       </div>
     </div>

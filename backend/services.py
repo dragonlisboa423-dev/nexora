@@ -50,6 +50,7 @@ def memory_delete(key):
                     **message,
                     "content": "[Resposta derivada de memória excluída removida.]",
                     "memory_ids": [],
+                    "verification": None,
                 },
                 message["id"],
             )

@@ -16,6 +16,10 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from . import storage as store
 from .agent.registry import REGISTRY, availability, decide, request_tool, schemas
+from .core import activate as activate_core
+from .core import core_status, policy_prompt, retrieve_principles
+from .core.laboratory import run_laboratory
+from .core.policy import context_message
 from .llm.connection import verify_connection
 from .llm.provider import Provider, ProviderError
 from .memory import index_memory, search_memories
@@ -28,6 +32,7 @@ from .tools import calculate
 @asynccontextmanager
 async def lifespan(app):
     store.initialize()
+    activate_core()
     for job in store.all_records("document_jobs"):
         if job["status"] in ("queued", "processing") and not job.get("cancelled"):
             smolin.start(job["document_id"], job["id"])
@@ -38,7 +43,7 @@ async def lifespan(app):
         await asyncio.gather(*tuple(smolin.TASKS), return_exceptions=True)
 
 
-app = FastAPI(title="SALY Intelligence · Centro Smolin", version="0.2.0", lifespan=lifespan)
+app = FastAPI(title="SALY Intelligence · Centro Smolin", version="0.3.0", lifespan=lifespan)
 
 
 class BodyLimitMiddleware:
@@ -259,6 +264,7 @@ async def health(_=Depends(owner)):
         "database": store.engine.dialect.name,
         "embeddings_configured": smolin.embedding_provider.configured,
         "single_owner": True,
+        "core": core_status(),
         "agent": {
             "name": "Agente Saly",
             "included": True,
@@ -502,7 +508,7 @@ class Chat(BaseModel):
     conversation_id: str | None = None
 
 
-def verify_response(value, sources):
+def verify_response(value, sources, core_ids=()):
     valid = {s["chunk_id"] for s in sources}
     unknown = []
 
@@ -512,7 +518,15 @@ def verify_response(value, sources):
         unknown.append(match[1])
         return "[referência não verificada]"
 
-    return re.sub(r"\[Fonte:([^\]]+)\]", check, value), unknown
+    value = re.sub(r"\[Fonte:([^\]]+)\]", check, value)
+
+    def check_core(match):
+        if match[1] in core_ids:
+            return match[0]
+        unknown.append("Core:" + match[1])
+        return "[princípio Core não recuperado]"
+
+    return re.sub(r"\[Core:([^\]]+)\]", check_core, value), unknown
 
 
 @app.post("/api/chat")
@@ -561,6 +575,9 @@ async def chat(body: Chat, request: Request, _=Depends(owner)):
         memories = []
         pending = []
         completed = False
+        tool_evidence = []
+        principles = retrieve_principles(body.message)
+        core = core_status()
         yield (
             json.dumps(
                 {
@@ -580,6 +597,7 @@ async def chat(body: Chat, request: Request, _=Depends(owner)):
                     yield json.dumps({"type": "state", "state": "searching"}) + "\n"
                     sources = await smolin.search(body.message)
                 context = {
+                    "core_principles": principles,
                     "memories": [
                         {
                             "id": m["id"],
@@ -608,11 +626,12 @@ async def chat(body: Chat, request: Request, _=Depends(owner)):
                     "Não retenha inferências sensíveis sem aprovação. Admita falta de evidência. Não invente citações. Cite trechos como [Fonte:ID_REAL_DO_TRECHO]. "
                     "Personalidade autorizada: "
                     + json.dumps(prefs["personality"], ensure_ascii=False)
-                    + "\nDADOS RECUPERADOS:\n"
-                    + json.dumps(context, ensure_ascii=False)
+                    + "\n"
+                    + policy_prompt()
                 )
                 turns = (
                     [{"role": "system", "content": system}]
+                    + [context_message(context)]
                     + bounded
                     + [{"role": "user", "content": body.message}]
                 )
@@ -681,6 +700,19 @@ async def chat(body: Chat, request: Request, _=Depends(owner)):
                                 "executed": False,
                                 "error": "Ferramenta ou argumentos inválidos. Nenhuma ação confirmada.",
                             }
+                        evidence = {
+                            "tool": name,
+                            "executed": result.get("executed", False),
+                            "execution_id": result.get("execution_id"),
+                            "approval_id": result.get("approval_id"),
+                        }
+                        if result.get("executed") and name in (
+                            "calculate",
+                            "check_load",
+                            "check_energy_cost",
+                        ):
+                            evidence["deterministic_result"] = result["result"]
+                        tool_evidence.append(evidence)
                         if result.get("executed"):
                             if name == "search_smolin":
                                 for source in result["result"]:
@@ -744,7 +776,20 @@ async def chat(body: Chat, request: Request, _=Depends(owner)):
                 with store.db() as connection:
                     known = set(connection.execute(select(store.chunks.c.id)).scalars())
                 sources = [source for source in sources if source["chunk_id"] in known]
-                answer, unknown = verify_response(answer, sources)
+                core_ids = [p["id"] for p in principles]
+                answer, unknown = verify_response(answer, sources, core_ids)
+                verification = {
+                    "unknown_citations": unknown,
+                    "core": {
+                        "schema_version": core["schema_version"],
+                        "adapter_version": core["adapter_version"],
+                        "sha256": core["sha256"],
+                        "principle_ids": core_ids,
+                        "retrieval": "lexical_seed",
+                    },
+                    "tools": tool_evidence,
+                    "scope": "IDs recuperados, políticas usadas e resultados determinísticos das ferramentas; não certifica toda afirmação factual nem revalida medições.",
+                }
                 if pending:
                     answer += "\n\nHá operações aguardando sua aprovação. Elas ainda não foram executadas."
                 store.save(
@@ -757,6 +802,7 @@ async def chat(body: Chat, request: Request, _=Depends(owner)):
                         "sources": sources,
                         "memory_ids": [m["id"] for m in memories],
                         "approvals": pending,
+                        "verification": verification,
                     },
                 )
                 store.audit("inference", "Resposta remota concluída: " + conversation["id"])
@@ -765,10 +811,7 @@ async def chat(body: Chat, request: Request, _=Depends(owner)):
                         {
                             "type": "done",
                             "content": answer,
-                            "verification": {
-                                "unknown_citations": unknown,
-                                "scope": "IDs de fontes e resultados de ferramentas; não certifica toda afirmação factual",
-                            },
+                            "verification": verification,
                             "approvals": pending,
                         }
                     )
@@ -913,7 +956,24 @@ def update_item(key: str, body: Item, _=Depends(owner)):
 
 @app.get("/api/evaluation")
 def evaluations(_=Depends(owner)):
-    return store.all_records("evaluations")
+    return [r for r in store.all_records("evaluations") if r.get("kind") != "core-lab-v1"]
+
+
+@app.get("/api/core")
+def installed_core(_=Depends(owner)):
+    return {**core_status(), "activation": store.setting("core_active", None)}
+
+
+@app.get("/api/laboratory")
+def laboratory_history(_=Depends(owner)):
+    return [r for r in store.all_records("evaluations") if r.get("kind") == "core-lab-v1"][:50]
+
+
+@app.post("/api/laboratory")
+def laboratory_run(_=Depends(owner)):
+    throttle("laboratory", 5)
+    report = run_laboratory(provider, smolin.embedding_provider.configured, app.version)
+    return store.save("evaluations", report)
 
 
 @app.post("/api/evaluation")

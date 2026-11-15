@@ -1,5 +1,7 @@
 # Implantação e recuperação
 
+Instalação PWA no Chrome Android, teste em modo avião e viabilidade de APK sem duplicar a interface estão em [android-offline.md](android-offline.md). A etapa Core não publica serviços nem implementa inferência local ou dados privados offline; o alcance exato está em [core-phase-1.md](core-phase-1.md).
+
 ## Opção de desenvolvimento
 
 Codespaces é ambiente temporário, não hospedagem gratuita permanente. Use a branch `feat/saly-smolin`, `bash scripts/install.sh`, configure `.env`, execute `python -m backend.manage owner` na venv e `SALY_SECURE_COOKIE=1 bash scripts/start.sh`. Porta 8000 privada. Não crie worktree: o checkout já é isolado. Mudanças em `.devcontainer` só se aplicam a um Codespaces existente após reconstruir o container.
