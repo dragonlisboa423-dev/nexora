@@ -16,3 +16,11 @@ npm --prefix frontend run build
 ```
 
 Os testes TestClient foram executados fora do sandbox pela limitação já observada de comunicação entre threads. Evidências de fases posteriores serão acrescentadas após execução efetiva; uma interface ou mock não contará como provedor comprovado.
+
+## Fase 1 · offline e sincronização
+
+**105 testes Python passaram, 1 PostgreSQL foi pulado por DSN ausente; 9 Vitest e build passaram.** Novos casos verificam reenvio sem duplicação, conflito por edição de outro dispositivo, tombstone sem recriação, confirmação, fuso, rollback de domínio/changelog/recibo e proteção de rotas.
+
+`scripts/browser_offline.py` passou em Chromium real: IndexedDB criptografado opt-in, download de original com bytes corretos sem rede, recarregamento e senha incorreta/correta, conflito entre dois clientes autenticados, criação offline/reenvio idempotente, propagação de exclusões, restauração validada com fila pausada e layout móvel. A primeira tentativa encontrou uma corrida ao restabelecer a rede antes de concluir a gravação local; a retomada foi corrigida e o fluxo completo passou. `scripts/browser_smoke.py` também passou, preservando os fluxos anteriores, sem erros de página. Nenhum provedor remoto foi chamado.
+
+O teste de navegador não comprova instalação física Android, armazenamento imune à limpeza do aparelho ou recursos não incluídos no cofre. O teste PostgreSQL permanece explicitamente não executado nesta rodada.

@@ -50,3 +50,9 @@ Nenhuma chave foi exposta ou alterada. Novos testes não podem consumir serviço
 8. Testes integrados, acessibilidade, móvel, documentação e matriz final de recursos demonstrados/pendentes.
 
 Cada etapa deve manter o aplicativo utilizável e receber commit próprio. Migrações serão aditivas; não haverá reset de banco, exclusão do histórico Git, mudança silenciosa de modelo ou ativação de faturamento. O alcance final será documentado pelo comportamento efetivamente executado, sem presumir que todas as fases passaram seus critérios.
+
+## Progresso comprovado · fase 1
+
+Importador/422 e revisão administrativa do Core foram corrigidos no commit `359ec4a`. A base offline agora dispõe de cofre IndexedDB opcional criptografado, leitura/edição de memórias e lembretes, documentos guardados seletivamente, configurações para consulta, fila idempotente e conflitos/exclusões com revisão. Os critérios relativos a estes tipos foram exercitados em Chromium com rede desligada e dois dispositivos lógicos. A consulta semântica, o modelo local e as futuras abas continuam fora desse alcance.
+
+As consultas oficiais ao modelo Cloudflare e à ficha Kokoro foram tentadas com TLS/proxy herdados. O sandbox não alcançava o proxy; a tentativa fora dele recebeu **CONNECT 403 da política de rede** para `developers.cloudflare.com` e `huggingface.co`. Não se concluiu que o serviço ou a licença sejam inválidos; o bloqueio é de acesso neste ambiente. Pesos não foram baixados, preço/franquia não foram certificados e nenhum serviço de geração foi chamado.

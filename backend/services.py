@@ -18,18 +18,21 @@ class Memory(BaseModel):
     relations: list[str] = Field(default_factory=list, max_length=100)
 
 
-def memory_save(body, key=None):
+def memory_save(body, key=None, *, create=False):
     for relation in body.relations:
         if not store.get("memories", relation):
             raise HTTPException(422, "Relação não encontrada")
     if key:
         current = store.get("memories", key)
-        if not current:
+        if not current and not create:
             raise HTTPException(404, "Memória não encontrada")
-        store.save("versions", {"memory_id": key, "snapshot": current})
-        store.set_setting("context_epoch", store.setting("context_epoch", 0) + 1)
-        with store.db() as connection:
-            connection.execute(delete(store.memory_vectors).where(store.memory_vectors.c.id == key))
+        if current:
+            store.save("versions", {"memory_id": key, "snapshot": current})
+            store.set_setting("context_epoch", store.setting("context_epoch", 0) + 1)
+            with store.db() as connection:
+                connection.execute(
+                    delete(store.memory_vectors).where(store.memory_vectors.c.id == key)
+                )
     result = store.save("memories", body.model_dump(), key)
     store.audit("memory", "Memória registrada: " + result["id"])
     return result

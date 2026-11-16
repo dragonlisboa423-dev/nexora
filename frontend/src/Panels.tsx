@@ -2,6 +2,7 @@ import { ModelConnection } from "./ModelConnection";
 import { Laboratory } from "./Laboratory";
 import { MemoryImport } from "./MemoryImport";
 import { CoreImport } from "./CoreImport";
+import { OfflinePanel } from "./offline/OfflinePanel";
 import { useEffect, useState } from "react";
 import { api, post, put, download, type Prefs } from "./api";
 export function Memories({ notify }: { notify: (s: string) => void }) {
@@ -756,6 +757,7 @@ export function SettingsPanel({
           </small>
         </div>
       )}
+      {(!section || section === "privacy") && <OfflinePanel />}
       {(!section || section === "privacy") && (
         <div className="card">
           <h2>Privacidade e permissões</h2>

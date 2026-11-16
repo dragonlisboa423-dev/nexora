@@ -3,6 +3,8 @@
 import os
 import re
 import uuid
+from contextlib import contextmanager, nullcontext
+from contextvars import ContextVar
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -104,6 +106,26 @@ memory_vectors = Table(
     Column("embedding", Vector(384).with_variant(JSON, "sqlite"), nullable=False),
     Column("embedding_version", String, nullable=False),
 )
+SYNC_KINDS = {"memories", "reminders", "documents"}
+sync_changes = Table(
+    "sync_changes",
+    metadata,
+    Column("cursor", Integer, primary_key=True, autoincrement=True),
+    Column("kind", String, nullable=False),
+    Column("entity_id", String, nullable=False),
+    Column("revision", Integer, nullable=False),
+    Column("deleted", Integer, nullable=False),
+    Column("created", String, nullable=False),
+)
+sync_receipts = Table(
+    "sync_receipts",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("digest", String, nullable=False),
+    Column("result", JSON, nullable=False),
+    Column("created", String, nullable=False),
+)
+_transaction_connection = ContextVar("saly_transaction_connection", default=None)
 engine = None
 
 
@@ -209,7 +231,30 @@ def initialize(url=None, check_legacy=True):
 def db():
     if engine is None:
         initialize()
+    active = _transaction_connection.get()
+    if active is not None:
+        return nullcontext(active)
     return engine.begin()
+
+
+@contextmanager
+def transaction():
+    """Reuse one connection for domain writes, derived cleanup, log and receipt."""
+    if _transaction_connection.get() is not None:
+        yield _transaction_connection.get()
+        return
+    if engine is None:
+        initialize()
+    with engine.connect() as connection, connection.begin():
+        if engine.dialect.name == "sqlite":
+            connection.exec_driver_sql("BEGIN IMMEDIATE")
+        elif engine.dialect.name == "postgresql":
+            connection.execute(text("SELECT pg_advisory_xact_lock(73625119)"))
+        token = _transaction_connection.set(connection)
+        try:
+            yield connection
+        finally:
+            _transaction_connection.reset(token)
 
 
 def pack(row):
@@ -231,19 +276,45 @@ def all_records(kind):
 
 def save(kind, data, key=None):
     key = key or uid()
-    old = get(kind, key)
-    payload = {k: v for k, v in data.items() if k not in ("id", "created", "updated")}
-    values = {"data": payload, "updated": now()}
     with db() as c:
+        old_row = c.execute(
+            select(tables[kind]).where(tables[kind].c.id == key).with_for_update()
+        ).first()
+        old = pack(old_row) if old_row else None
+        payload = {
+            k: v for k, v in data.items() if k not in ("id", "created", "updated", "revision")
+        }
+        if kind in SYNC_KINDS:
+            payload["revision"] = int(old.get("revision", 1)) + 1 if old else 1
+        values = {"data": payload, "updated": now()}
         if old:
             c.execute(update(tables[kind]).where(tables[kind].c.id == key).values(**values))
         else:
             c.execute(insert(tables[kind]).values(id=key, created=now(), **values))
+        if kind in SYNC_KINDS:
+            c.execute(
+                insert(sync_changes).values(
+                    kind=kind, entity_id=key, revision=payload["revision"], deleted=0, created=now()
+                )
+            )
     return get(kind, key)
 
 
 def remove(kind, key):
     with db() as c:
+        old = c.execute(
+            select(tables[kind]).where(tables[kind].c.id == key).with_for_update()
+        ).first()
+        if kind in SYNC_KINDS and old:
+            c.execute(
+                insert(sync_changes).values(
+                    kind=kind,
+                    entity_id=key,
+                    revision=int(pack(old).get("revision", 1)) + 1,
+                    deleted=1,
+                    created=now(),
+                )
+            )
         c.execute(delete(tables[kind]).where(tables[kind].c.id == key))
 
 

@@ -6,7 +6,7 @@ Não existe cadastro público, seleção de contas ou memória por usuário. Um 
 
 A aplicação e suas ferramentas locais foram implementadas e testadas. Inferência com um provedor real, qualidade de embeddings reais e hospedagem Supabase ainda dependem de credenciais/serviços que não foram fornecidos. Veja [validação](docs/validation.md) e o [relatório técnico](docs/delivery.md); isso não é uma afirmação de que todos os critérios finais já foram atendidos.
 
-A etapa Core de 2026-11-15 integra o JSON anexado ao prompt, adiciona verificadores científicos com unidades e evidências por resposta, e inclui o **Laboratório SALY** dentro de **Avaliação**, com testes locais e exportação de resultados. Consulte [implementação e limites da etapa](docs/core-phase-1.md) e [Android, HTTPS e modo avião](docs/android-offline.md). O ZIP e o prompt mestre citados ainda não estavam nas branches publicadas consultadas; a integração completa do pacote permanece pendente.
+A etapa Core integra o JSON ao modelo, verificadores com unidades e evidências por resposta. O prompt mestre completo foi recebido e está em [CODEX_INTEGRATION_PROMPT.md](docs/CODEX_INTEGRATION_PROMPT.md); a evolução segue a [auditoria e fases](docs/SALY_IMPLEMENTATION_AUDIT.md). Há revisão administrativa do Core e importação de memórias com prévia/erros por campo. Em **Configurações → Privacidade**, o cofre local opcional permite dados privados criptografados e sincronização de memórias/lembretes, além de documentos escolhidos para leitura. Consulte [Android e offline atuais](docs/INSTALAR_SALY_ANDROID.md) e o [relatório de testes](docs/SALY_TEST_REPORT.md). O pacote modular ZIP ainda não foi recebido.
 
 ## Iniciar no Codespaces
 

@@ -1,5 +1,7 @@
 # HTTPS, Android e modo avião
 
+**Atualização da especificação 2026.11.15:** existe agora cofre opcional criptografado e sincronização para o escopo documentado em [INSTALAR_SALY_ANDROID.md](INSTALAR_SALY_ANDROID.md). As instruções abaixo registram a versão anterior, cujo offline era somente fallback público; não descrevem a nova capacidade completa do cofre.
+
 ## Publicação HTTPS
 
 O repositório não hospeda sozinho o backend ou o banco. Use uma instalação existente ou a opção de `deployment.md`, com volume persistente, chave somente no servidor, autenticação da proprietária, HTTPS e `SALY_SECURE_COOKIE=1`. Nenhum serviço foi contratado ou publicado nesta etapa. Confirme quota e condições de qualquer plano antes de criar recursos; o orçamento inicial é R$ 0.

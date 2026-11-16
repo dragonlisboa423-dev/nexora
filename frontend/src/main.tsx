@@ -47,6 +47,7 @@ import { Smolin } from "./Smolin";
 import { Approvals, Agenda, Tools, ReminderAlerts } from "./AgentPanels";
 import { emit, transition, useOperations } from "./operations";
 import { PwaUpdate } from "./pwa";
+const OfflineWorkspace = lazy(() => import("./offline/OfflineWorkspace"));
 import { VerificationDetails, type Verification } from "./Laboratory";
 const labels: Record<SalyState, string> = {
   idle: "Em repouso",
@@ -139,6 +140,10 @@ function Login({ done }: { done: () => void }) {
       <small>
         Memória única · Documentos privados · Controle da proprietária
       </small>
+      {!navigator.onLine && <h2>Saly está sem conexão.</h2>}
+      <NavLink to="/offline" className="citation">
+        Abrir cofre local sem depender do servidor
+      </NavLink>
     </div>
   );
 }
@@ -378,7 +383,12 @@ function App() {
     }
   }
   if (auth === null)
-    return <div className="loading">Conectando ao seu espaço…</div>;
+    return (
+      <div className="loading">
+        Conectando ao seu espaço…{" "}
+        <NavLink to="/offline">Abrir cofre local</NavLink>
+      </div>
+    );
   if (!auth) return <Login done={() => setAuth(true)} />;
   const navigation = [
     ["/", "Visão central", Sparkles],
@@ -1004,14 +1014,24 @@ function App() {
         <footer className="site-footer">
           <span>SALY INTELLIGENCE</span>
           <span>Seu contexto. Sua inteligência.</span>
-          <span>v0.3 · MEMÓRIA CONTÍNUA</span>
+          <span>v0.4 · MEMÓRIA CONTÍNUA</span>
         </footer>
       </div>
     </div>
   );
 }
+function AppEntry() {
+  const location = useLocation();
+  return location.pathname === "/offline" ? (
+    <Suspense fallback={<div className="loading">Abrindo cofre local…</div>}>
+      <OfflineWorkspace />
+    </Suspense>
+  ) : (
+    <App />
+  );
+}
 createRoot(document.getElementById("root")!).render(
   <BrowserRouter>
-    <App />
+    <AppEntry />
   </BrowserRouter>,
 );

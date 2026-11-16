@@ -29,6 +29,7 @@ from .memory import index_memory, search_memories
 from .security import COOKIE, owner, throttle, unlock
 from .services import Memory, memory_delete, memory_save
 from .smolin import service as smolin
+from .sync import router as sync_router
 from .tools import calculate
 
 
@@ -46,7 +47,7 @@ async def lifespan(app):
         await asyncio.gather(*tuple(smolin.TASKS), return_exceptions=True)
 
 
-app = FastAPI(title="SALY Intelligence · Centro Smolin", version="0.3.0", lifespan=lifespan)
+app = FastAPI(title="SALY Intelligence · Centro Smolin", version="0.4.0", lifespan=lifespan)
 
 
 @app.exception_handler(RequestValidationError)
@@ -1042,6 +1043,7 @@ def backup(_=Depends(owner)):
 
 
 app.include_router(core_admin_router)
+app.include_router(sync_router)
 
 DIST = Path(__file__).resolve().parents[1] / "frontend" / "dist"
 

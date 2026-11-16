@@ -19,6 +19,7 @@ ENV = {
     "SALY_DATA_DIR": TEMP.name,
     "SALY_DATABASE_URL": "sqlite:///" + TEMP.name + "/saly-v2.sqlite3",
     "SALY_LLM_API_KEY": "",
+    "GROQ_API_KEY": "",
     "SALY_OWNER_PASSWORD_HASH": "",
     "SALY_EMBEDDING_URL": "",
     "SALY_GITHUB_TOKEN": "",

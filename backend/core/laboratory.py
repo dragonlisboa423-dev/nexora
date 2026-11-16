@@ -214,8 +214,8 @@ def capabilities(provider, embeddings_configured):
         {
             "id": "offline",
             "name": "Dados e IA offline no dispositivo",
-            "state": "blocked",
-            "detail": "Cache público e página offline existentes. Sem banco local de documentos/memórias nem modelo local conectado; modo avião não permite inferência remota.",
+            "state": "partial",
+            "detail": "Cofre criptografado IndexedDB opcional para memórias/lembretes, documentos escolhidos e consulta de configurações, com sync/conflitos. O backend não verifica o cofre deste aparelho; IA local não está instalada.",
         },
     ]
 
