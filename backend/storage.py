@@ -79,6 +79,7 @@ for name in [
     "reading_progress",
     "book_annotations",
     "media_jobs",
+    "smolin_uploads",
 ]:
     tables[name] = Table(
         name,

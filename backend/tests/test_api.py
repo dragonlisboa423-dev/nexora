@@ -594,7 +594,7 @@ def test_upload_auth_and_request_limits_precede_parser(client):
             content=b"x",
             headers={
                 "Content-Type": "multipart/form-data; boundary=test",
-                "Content-Length": str(12 * 1024 * 1024),
+                "Content-Length": str(65 * 1024 * 1024),
                 "X-Saly-Request": "1",
             },
         ).status_code

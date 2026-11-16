@@ -12,6 +12,8 @@ Há também síntese independente opcional com eSpeak NG instalado no servidor, 
 
 A evolução de 2026-11-16 acrescenta **Agenda e Alarmes, Compras, Espaço, Biblioteca com Biologia em rascunho e Estúdio Multimídia**. Há montagem MP4 real com FFmpeg e edição local de imagem; geração por IA depende dos provedores/configurações descritos no [estado atual da implementação](docs/SALY_IMPLEMENTATION_STATUS.md). O cofre oferece cópias opcionais de livros/mídias e consulta de agenda/alarmes, além da fila de memórias/tarefas/compras/links. As consultas pessoais do agente exigem permissão separada, desligada por padrão. Consulte [testes e limites](docs/SALY_TEST_REPORT.md) antes de declarar uma implantação completa.
 
+O Centro Smolin agora permite guardar/baixar outros formatos, enviar arquivos grandes em blocos, extrair texto de Office/EPUB e OCR local quando disponível. PDFs abrem como livros com **páginas originais**, imagens e texto selecionável. MP3/MP4 têm reprodução/inspeção e suporte a transcrição local opcional, ainda dependente da instalação do modelo. Veja [formatos, limites, leitor PDF e preparo da transcrição](docs/SMOLIN_FILES_AND_PDF.md).
+
 ## Iniciar no Codespaces
 
 Abra o terminal do Codespaces e use o checkout existente:

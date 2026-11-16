@@ -38,6 +38,8 @@ from .planning import scheduler as alarm_scheduler
 from .security import COOKIE, owner, throttle, unlock
 from .services import Memory, memory_delete, memory_save
 from .smolin import service as smolin
+from .smolin.transcription import capability as transcription_capability
+from .smolin.uploads import router as smolin_upload_router
 from .sync import router as sync_router
 from .tools import calculate
 from .voices import router as voices_router
@@ -100,7 +102,14 @@ class BodyLimitMiddleware:
         headers = dict(scope.get("headers", []))
         multipart = headers.get(b"content-type", b"").startswith(b"multipart/form-data")
         limit = (
-            (int(os.environ.get("SALY_MAX_UPLOAD_MB", "10")) * 1024 * 1024 + 512 * 1024)
+            (
+                (
+                    smolin.upload_limit()
+                    if scope.get("path") == "/api/knowledge"
+                    else int(os.environ.get("SALY_MAX_UPLOAD_MB", "10")) * 1024 * 1024
+                )
+                + 512 * 1024
+            )
             if multipart
             else 6 * 1024 * 1024
         )
@@ -475,12 +484,34 @@ def documents(_=Depends(owner)):
 
 @app.post("/api/knowledge")
 async def upload(file: UploadFile = File(...), _=Depends(owner)):
-    maximum = int(os.environ.get("SALY_MAX_UPLOAD_MB", "10")) * 1024 * 1024
+    maximum = smolin.upload_limit()
     data = await file.read(maximum + 1)
     result = smolin.upload(data, file.filename or "documento")
     if result.get("job_id"):
         smolin.start(result["id"], result["job_id"])
     return result
+
+
+@app.get("/api/knowledge/capabilities")
+def knowledge_capabilities(_=Depends(owner)):
+    import shutil
+
+    return {
+        "max_upload_bytes": smolin.upload_limit(),
+        "chunk_bytes": 2 * 1024 * 1024,
+        "max_pdf_pages": int(os.environ.get("SALY_MAX_PAGES", "2000")),
+        "all_file_storage": True,
+        "interpretable": [
+            "PDF",
+            "TXT/MD/CSV/JSON/XML/HTML/código UTF-8/UTF-16",
+            "DOCX/XLSX/PPTX/ODT/ODS/ODP/EPUB",
+            "imagens por OCR",
+            "áudio/vídeo com motores locais",
+        ],
+        "ocr_available": bool(shutil.which("tesseract")),
+        "ffmpeg_available": bool(shutil.which("ffmpeg") and shutil.which("ffprobe")),
+        "transcription": transcription_capability(),
+    }
 
 
 @app.get("/api/knowledge/search")
@@ -501,7 +532,15 @@ async def cancel_job(key: str, _=Depends(owner)):
     store.save("document_jobs", {**job, "cancelled": True, "status": "cancelled"}, key)
     doc = store.get("documents", job["document_id"])
     if doc:
-        store.save("documents", {**doc, "status": "cancelled"}, doc["id"])
+        store.save(
+            "documents",
+            {
+                **doc,
+                "status": "cancelled",
+                "interpretation_notice": "Interpretação cancelada; o original continua disponível.",
+            },
+            doc["id"],
+        )
     task = smolin.JOB_TASKS.get(key)
     if task:
         task.cancel()
@@ -517,20 +556,115 @@ def document_detail(key: str, _=Depends(owner)):
 
 
 @app.get("/api/knowledge/{key}/original")
-def document_original(key: str, _=Depends(owner)):
+def document_original(key: str, request: Request, download: bool = False, _=Depends(owner)):
     d = store.get("documents", key)
     if not d:
-        raise HTTPException(404, "Documento não encontrado")
+        raise HTTPException(404, "Arquivo não encontrado")
     from urllib.parse import quote
 
-    return Response(
-        smolin.original(key),
-        media_type=d["mime"],
-        headers={
-            "Content-Disposition": "inline; filename*=UTF-8''" + quote(d["name"]),
-            "Content-Security-Policy": "sandbox",
+    raw = smolin.original(key)
+    size = len(raw)
+    safe_inline = d["mime"] in {
+        "application/pdf",
+        "text/plain",
+        "text/markdown",
+        "image/png",
+        "image/jpeg",
+        "image/webp",
+        "image/gif",
+        "image/bmp",
+        "audio/mpeg",
+        "audio/wav",
+        "audio/x-wav",
+        "audio/ogg",
+        "audio/flac",
+        "video/mp4",
+        "video/webm",
+    }
+    headers = {
+        "Content-Disposition": ("attachment" if download or not safe_inline else "inline")
+        + "; filename*=UTF-8''"
+        + quote(d["name"], safe=""),
+        "Content-Security-Policy": "sandbox",
+        "Accept-Ranges": "bytes",
+        "Cache-Control": "no-store",
+        "X-Content-Type-Options": "nosniff",
+    }
+    requested = request.headers.get("range")
+    if requested:
+        match = re.fullmatch(r"bytes=(\d*)-(\d*)", requested)
+        try:
+            if not match or not any(match.groups()):
+                raise ValueError()
+            left, right = match.groups()
+            if left:
+                start = int(left)
+                end = min(int(right) if right else size - 1, size - 1)
+            else:
+                start = max(0, size - int(right))
+                end = size - 1
+            if not 0 <= start <= end < size:
+                raise ValueError()
+        except ValueError:
+            return Response(
+                status_code=416, headers={**headers, "Content-Range": f"bytes */{size}"}
+            )
+        return Response(
+            raw[start : end + 1],
+            status_code=206,
+            media_type=d["mime"],
+            headers={**headers, "Content-Range": f"bytes {start}-{end}/{size}"},
+        )
+    return Response(raw, media_type=d["mime"], headers=headers)
+
+
+class ReadingPosition(BaseModel):
+    page: int = Field(ge=1, le=100000)
+
+
+@app.get("/api/knowledge/{key}/reading-position")
+def reading_position(key: str, _=Depends(owner)):
+    if not store.get("documents", key):
+        raise HTTPException(404, "Arquivo não encontrado")
+    return store.setting("pdf-reading:" + key, {"page": 1})
+
+
+@app.put("/api/knowledge/{key}/reading-position")
+def save_reading_position(key: str, body: ReadingPosition, _=Depends(owner)):
+    doc = store.get("documents", key)
+    if not doc or doc["mime"] != "application/pdf":
+        raise HTTPException(404, "PDF não encontrado")
+    store.set_setting("pdf-reading:" + key, body.model_dump())
+    return body.model_dump()
+
+
+@app.post("/api/knowledge/{key}/transcribe")
+async def transcribe_document(key: str, _=Depends(owner)):
+    doc = store.get("documents", key)
+    if not doc or doc.get("kind") not in {"audio", "video"}:
+        raise HTTPException(422, "Escolha um áudio ou vídeo")
+    if not transcription_capability()["available"]:
+        raise HTTPException(
+            503,
+            "Motor local não instalado. Execute bash scripts/install-transcription.sh no servidor; nenhuma API paga será usada.",
+        )
+    if any(
+        j["document_id"] == key and j["status"] in {"queued", "processing"}
+        for j in store.all_records("document_jobs")
+    ):
+        raise HTTPException(409, "Arquivo já está em processamento")
+    job = store.save(
+        "document_jobs",
+        {
+            "document_id": key,
+            "status": "queued",
+            "progress": 0,
+            "cancelled": False,
+            "operation": "transcribe",
         },
     )
+    smolin.start(key, job["id"])
+    return job
 
 
 @app.post("/api/knowledge/{key}/reprocess")
@@ -538,6 +672,10 @@ async def reprocess(key: str, _=Depends(owner)):
     d = store.get("documents", key)
     if not d:
         raise HTTPException(404, "Documento não encontrado")
+    if d.get("kind") == "binary":
+        raise HTTPException(
+            415, "Formato preservado para download; ainda não há interpretador para este tipo"
+        )
     if any(
         j["document_id"] == key and j["status"] in ("queued", "processing")
         for j in store.all_records("document_jobs")
@@ -808,7 +946,8 @@ async def chat(body: Chat, request: Request, _=Depends(owner)):
                                             "page": item["page"],
                                             "position": item["position"],
                                             "content": item["content"],
-                                            "url": f"/api/knowledge/{document['id']}/original#page={item['page']}",
+                                            "url": smolin.source_url(document, item["page"]),
+                                            **smolin.source_metadata(document, item["page"]),
                                         }
                                     )
                             yield (
@@ -1160,6 +1299,7 @@ app.include_router(planning_router)
 app.include_router(personal_router)
 app.include_router(library_router)
 app.include_router(media_router)
+app.include_router(smolin_upload_router)
 
 DIST = Path(__file__).resolve().parents[1] / "frontend" / "dist"
 

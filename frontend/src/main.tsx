@@ -66,6 +66,7 @@ const Purchases = lazy(() =>
 const Space = lazy(() =>
   import("./Personal").then((m) => ({ default: m.Space })),
 );
+const PdfBook = lazy(() => import("./PdfBook"));
 const Studio = lazy(() => import("./Studio"));
 const Library = lazy(() => import("./Library"));
 import { AlarmNotifier } from "./AlarmNotifier";
@@ -731,9 +732,11 @@ function App() {
                                 rel="noreferrer"
                               >
                                 {source.name} ·{" "}
-                                {source.page
-                                  ? `p. ${source.page}`
-                                  : "legado sem página"}{" "}
+                                {typeof source.start_seconds === "number"
+                                  ? `${source.start_seconds.toFixed(2)}s`
+                                  : source.page
+                                    ? `p. ${source.page}`
+                                    : "legado sem página"}{" "}
                                 · trecho {source.position + 1} ↗
                               </a>
                             ))}
@@ -815,9 +818,11 @@ function App() {
                           <p key={i}>
                             <a href={s.url} target="_blank" rel="noreferrer">
                               {s.name} ·{" "}
-                              {s.page
-                                ? `página ${s.page}`
-                                : "página não disponível"}{" "}
+                              {typeof s.start_seconds === "number"
+                                ? `${s.start_seconds.toFixed(2)}s`
+                                : s.page
+                                  ? `página ${s.page}`
+                                  : "página não disponível"}{" "}
                               · trecho {s.position + 1}
                             </a>
                             : {s.content.slice(0, 200)}
@@ -977,6 +982,14 @@ function App() {
               }
             />
             <Route path="/memory" element={<Memories notify={setError} />} />
+            <Route
+              path="/knowledge/:documentId/read"
+              element={
+                <Suspense fallback={<p>Carregando leitor PDF…</p>}>
+                  <PdfBook />
+                </Suspense>
+              }
+            />
             <Route
               path="/knowledge"
               element={

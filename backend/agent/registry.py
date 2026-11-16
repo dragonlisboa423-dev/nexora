@@ -451,10 +451,29 @@ async def execute(name, args):
             )
         if not r:
             raise ValueError("Trecho não encontrado")
-        return {k: r[k] for k in ("id", "document_id", "page", "position", "content")}
+        from ..smolin.service import source_metadata, source_url
+
+        doc = store.get("documents", r["document_id"])
+        return {
+            **{k: r[k] for k in ("id", "document_id", "page", "position", "content")},
+            **source_metadata(doc, r["page"]),
+            "url": source_url(doc, r["page"]),
+        }
     if name == "list_documents":
         return [
-            {k: d.get(k) for k in ("id", "name", "status", "page_count")}
+            {
+                k: d.get(k)
+                for k in (
+                    "id",
+                    "name",
+                    "status",
+                    "page_count",
+                    "kind",
+                    "unit",
+                    "interpretation_notice",
+                    "transcribed",
+                )
+            }
             for d in store.all_records("documents")
         ]
     if name == "list_reminders":

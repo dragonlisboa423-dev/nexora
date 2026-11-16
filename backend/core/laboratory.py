@@ -185,7 +185,7 @@ def capabilities(provider, embeddings_configured):
             "state": "configured" if embeddings_configured else "partial",
             "detail": "Upload, extração e busca lexical implementados. Encoder configurado, mas não testado neste laboratório."
             if embeddings_configured
-            else "Busca lexical disponível; encoder semântico não configurado. OCR pendente.",
+            else "Busca lexical disponível; encoder semântico não configurado. OCR local de imagens/quadros depende de Tesseract; OCR de PDF escaneado permanece pendente.",
         },
         {
             "id": "voice",

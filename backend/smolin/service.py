@@ -4,6 +4,7 @@ import json
 import math
 import os
 import re
+import signal
 import sys
 import tempfile
 from pathlib import Path
@@ -13,11 +14,16 @@ from fastapi import HTTPException
 from sqlalchemy import delete, insert, select, text
 
 from .. import storage as store
+from .formats import classify, safe_name
 
-PIPELINE = "smolin-pages-v2"
+PIPELINE = "smolin-files-v3"
 SEM = asyncio.Semaphore(max(1, min(2, int(os.environ.get("SALY_DOC_WORKERS", "1")))))
 TASKS = set()
 JOB_TASKS = {}
+
+
+def upload_limit():
+    return max(1, min(512, int(os.environ.get("SALY_SMOLIN_MAX_UPLOAD_MB", "64")))) * 1024 * 1024
 
 
 class Embeddings:
@@ -97,36 +103,68 @@ async def process(key, job_id):
         store.save("documents", {**doc, "status": "processing"}, key)
         try:
             raw = original(key)
-            if doc["mime"] == "application/pdf":
-                store.DATA.mkdir(parents=True, exist_ok=True, mode=0o700)
-                with tempfile.TemporaryDirectory(dir=store.DATA) as folder:
-                    file = Path(folder) / "input.pdf"
-                    file.write_bytes(raw)
-                    file.chmod(0o600)
-                    proc = await asyncio.create_subprocess_exec(
+            kind = doc.get("kind") or ("pdf" if doc["mime"] == "application/pdf" else "text")
+            transcription = job.get("operation") == "transcribe"
+            store.DATA.mkdir(parents=True, exist_ok=True, mode=0o700)
+            with tempfile.TemporaryDirectory(dir=store.DATA) as folder:
+                file = Path(folder) / "input.bin"
+                file.write_bytes(raw)
+                file.chmod(0o600)
+                command = (
+                    [sys.executable, "-m", "backend.smolin.transcription", str(file)]
+                    if transcription
+                    else [
                         sys.executable,
                         "-m",
                         "backend.smolin.extract",
                         str(file),
-                        str(int(os.environ.get("SALY_MAX_PAGES", "500"))),
-                        stdout=asyncio.subprocess.PIPE,
-                        stderr=asyncio.subprocess.DEVNULL,
-                    )
-                    try:
-                        out, _ = await asyncio.wait_for(proc.communicate(), 40)
-                    except (TimeoutError, asyncio.CancelledError):
-                        proc.kill()
-                        await proc.wait()
-                        raise
-                    if proc.returncode:
-                        raise ValueError("PDF inválido ou limite de extração excedido")
-                    parsed = json.loads(out)
-            else:
-                parsed = {
-                    "pages": [{"page": 1, "content": raw.decode("utf-8-sig")}],
-                    "title": doc["name"],
-                    "author": "",
+                        str(int(os.environ.get("SALY_MAX_PAGES", "2000"))),
+                        kind,
+                    ]
+                )
+                environment = {
+                    "PATH": os.defpath,
+                    "LANG": "C.UTF-8",
+                    "OMP_NUM_THREADS": "2",
+                    "OPENBLAS_NUM_THREADS": "1",
                 }
+                if transcription and os.environ.get("SALY_SMOLIN_WHISPER_MODEL_PATH"):
+                    environment["SALY_SMOLIN_WHISPER_MODEL_PATH"] = os.environ[
+                        "SALY_SMOLIN_WHISPER_MODEL_PATH"
+                    ]
+                proc = await asyncio.create_subprocess_exec(
+                    *command,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.DEVNULL,
+                    env=environment,
+                    start_new_session=True,
+                )
+                try:
+                    out, _ = await asyncio.wait_for(
+                        proc.communicate(), 600 if transcription else 180
+                    )
+                except (TimeoutError, asyncio.CancelledError):
+                    if proc.returncode is None:
+                        try:
+                            os.killpg(proc.pid, signal.SIGKILL)
+                        except ProcessLookupError:
+                            pass
+                    await proc.wait()
+                    raise
+                if proc.returncode or len(out) > 16 * 1024 * 1024:
+                    raise ValueError("Extração não concluída")
+                parsed = json.loads(out)
+            if transcription:
+                old_frames = [p for p in doc.get("pages", []) if p.get("method") != "whisper_local"]
+                if doc.get("kind") == "video":
+                    parsed["pages"] = sorted(
+                        old_frames + parsed["pages"], key=lambda p: p.get("start_seconds", 0)
+                    )
+                    for number, item in enumerate(parsed["pages"], 1):
+                        item["page"] = number
+                    parsed["notice"] = (
+                        doc.get("interpretation_notice", "") + " " + parsed.get("notice", "")
+                    )
             with store.db() as c:
                 c.execute(delete(store.chunks).where(store.chunks.c.document_id == key))
             total = len(parsed["pages"])
@@ -180,13 +218,27 @@ async def process(key, job_id):
             current_job = store.get("document_jobs", job_id)
             if not current_job or current_job.get("cancelled") or not store.get("documents", key):
                 return
-            state = "ocr_required" if len(empty) == total else "partial" if empty else "ready"
+            state = parsed.get("status") or (
+                "ocr_required"
+                if kind == "pdf" and len(empty) == total
+                else "stored_only"
+                if not count
+                else "partial"
+                if empty
+                else "ready"
+            )
             store.save(
                 "documents",
                 {
                     **doc,
                     "status": state,
                     "page_count": total,
+                    "unit": parsed.get("unit", "page"),
+                    "media_info": parsed.get("media_info"),
+                    "interpretation_notice": parsed.get(
+                        "notice", "Texto extraído do documento; o original é preservado."
+                    ),
+                    "transcribed": parsed.get("transcribed", False),
                     "pages": parsed["pages"],
                     "title": parsed["title"],
                     "author": parsed["author"],
@@ -213,14 +265,22 @@ async def process(key, job_id):
             raise
         except Exception:  # noqa: BLE001 - sanitize errors at the untrusted operation boundary
             if store.get("documents", key):
-                store.save("documents", {**doc, "status": "failed"}, key)
+                store.save(
+                    "documents",
+                    {
+                        **doc,
+                        "status": "failed",
+                        "interpretation_notice": "O original está preservado; a interpretação não foi concluída. Confira formato, limites e motores locais.",
+                    },
+                    key,
+                )
             if store.get("document_jobs", job_id):
                 store.save(
                     "document_jobs",
                     {
                         **store.get("document_jobs", job_id),
                         "status": "failed",
-                        "error": "Não foi possível processar o arquivo dentro dos limites.",
+                        "error": "Não foi possível interpretar dentro dos limites. O original continua disponível para abrir ou baixar; confira formato, páginas, faixa de áudio e motores instalados.",
                     },
                     job_id,
                 )
@@ -236,7 +296,12 @@ def start(key, job_id):
 
 
 def upload(raw, name):
-    limit = int(os.environ.get("SALY_MAX_UPLOAD_MB", "10")) * 1024 * 1024
+    with store.transaction():
+        return _upload(raw, name)
+
+
+def _upload(raw, name):
+    limit = upload_limit()
     if len(raw) > limit:
         raise HTTPException(413, "Arquivo excede o limite configurado")
     digest = hashlib.sha256(raw).hexdigest()
@@ -245,21 +310,16 @@ def upload(raw, name):
         return {"id": duplicate["id"], "duplicate": True, "status": duplicate["status"]}
     if len(store.all_records("documents")) >= int(os.environ.get("SALY_MAX_DOCUMENTS", "50")):
         raise HTTPException(413, "Acervo atingiu o limite de documentos")
-    filename = Path(name).name[:200]
-    if raw.lstrip().startswith(b"%PDF-"):
-        mime = "application/pdf"
-    elif filename.lower().endswith((".txt", ".md")):
-        try:
-            if b"\x00" in raw:
-                raise ValueError("binário")
-            decoded = raw.decode("utf-8-sig")
-            if len(decoded) > 2_000_000:
-                raise ValueError("Texto excede o limite")
-        except (UnicodeDecodeError, ValueError):
-            raise HTTPException(422, "Texto precisa ser UTF-8 válido") from None
-        mime = "text/markdown" if filename.lower().endswith(".md") else "text/plain"
-    else:
-        raise HTTPException(422, "Conteúdo não corresponde a PDF ou texto UTF-8 suportado")
+    filename = safe_name(name)
+    try:
+        mime, kind = classify(raw, filename)
+        if filename.lower().endswith(".pdf") and kind != "pdf":
+            raise ValueError("PDF inválido")
+    except (UnicodeDecodeError, ValueError):
+        raise HTTPException(
+            422,
+            "Conteúdo inválido para o formato; texto precisa ser UTF-8/UTF-16 válido e PDF precisa ter assinatura PDF",
+        ) from None
     used = sum(
         d.get("file_size", 0) + len(d.get("content", "").encode()) * 3 + d.get("chunks", 0) * 8000
         for d in store.all_records("documents")
@@ -271,9 +331,14 @@ def upload(raw, name):
         {
             "name": filename,
             "mime": mime,
+            "kind": kind,
+            "unit": "page" if kind == "pdf" else "section",
+            "interpretation_notice": "Arquivo preservado para download; este formato não possui interpretador instalado."
+            if kind == "binary"
+            else "Aguardando interpretação local.",
             "sha256": digest,
             "file_size": len(raw),
-            "status": "queued",
+            "status": "stored_only" if kind == "binary" else "queued",
             "page_count": 0,
             "chunks": 0,
             "pipeline": PIPELINE,
@@ -284,12 +349,32 @@ def upload(raw, name):
     )
     with store.db() as c:
         c.execute(insert(store.originals).values(id=doc["id"], content=raw))
+    if kind == "binary":
+        store.audit("document", "Arquivo privado armazenado sem interpretação: " + doc["id"])
+        return {"id": doc["id"], "duplicate": False, "status": "stored_only"}
     job = store.save(
         "document_jobs",
         {"document_id": doc["id"], "status": "queued", "progress": 0, "cancelled": False},
     )
     store.audit("document", "Original privado recebido: " + doc["id"])
     return {"id": doc["id"], "job_id": job["id"], "duplicate": False, "status": "queued"}
+
+
+def source_url(doc, page):
+    original = f"/api/knowledge/{doc['id']}/original"
+    item = next((p for p in doc.get("pages", []) if p["page"] == page), {})
+    return (
+        original + f"#t={item['start_seconds']}"
+        if "start_seconds" in item
+        else original + f"#page={page}"
+    )
+
+
+def source_metadata(doc, page):
+    item = next((p for p in doc.get("pages", []) if p["page"] == page), {})
+    return {
+        key: item[key] for key in ("start_seconds", "end_seconds", "label", "method") if key in item
+    }
 
 
 def lexical(query, limit=8):
@@ -333,7 +418,8 @@ def lexical(query, limit=8):
                     "position": r["position"],
                     "content": r["content"],
                     "source": "smolin",
-                    "url": f"/api/knowledge/{doc['id']}/original#page={r['page']}",
+                    "url": source_url(doc, r["page"]),
+                    **source_metadata(doc, r["page"]),
                 }
             )
     return results
@@ -392,7 +478,8 @@ async def search(query):
                             "position": row["position"],
                             "content": row["content"],
                             "source": "smolin",
-                            "url": f"/api/knowledge/{d['id']}/original#page={row['page']}",
+                            "url": source_url(d, row["page"]),
+                            **source_metadata(d, row["page"]),
                         }
                     )
         except (httpx.HTTPError, ValueError, KeyError):
@@ -411,6 +498,8 @@ def delete_document(key):
             task = JOB_TASKS.get(job["id"])
             if task:
                 task.get_loop().call_soon_threadsafe(task.cancel)
+    with store.db() as connection:
+        connection.execute(delete(store.config).where(store.config.c.id == "pdf-reading:" + key))
     # FK cascades remove original, chunks, vectors; SQLite triggers remove FTS entries.
     store.remove("documents", key)
     for message in store.all_records("messages"):

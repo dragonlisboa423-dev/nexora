@@ -12,6 +12,7 @@
   "dependencies": {
     "@react-three/fiber": "9.1.2",
     "lucide-react": "0.511.0",
+    "pdfjs-dist": "6.5.438",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-markdown": "10.1.0",
@@ -20,6 +21,7 @@
     "three": "0.176.0"
   },
   "devDependencies": {
+    "@types/node": "24.19.2",
     "@types/react": "19.1.4",
     "@types/react-dom": "19.1.5",
     "@types/three": "0.176.0",

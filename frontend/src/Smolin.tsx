@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
+import { smolinError, uploadResponse } from "./smolin_transfer";
 import { api, post } from "./api";
 import { emit } from "./operations";
 import { PageTitle, Empty } from "./Panels";
@@ -21,9 +23,11 @@ export function Smolin({
     [transfers, setTransfers] = useState<Transfer[]>([]),
     [query, setQuery] = useState(""),
     [results, setResults] = useState<any[]>([]),
-    [detail, setDetail] = useState<any>(null);
+    [detail, setDetail] = useState<any>(null),
+    [capabilities, setCapabilities] = useState<any>(null);
   const requests = useRef(new Map<string, XMLHttpRequest>()),
-    active = useRef(new Set<string>());
+    active = useRef(new Set<string>()),
+    cancelled = useRef(new Set<string>());
   const refresh = async () => {
     try {
       const [d, j] = await Promise.all([
@@ -46,11 +50,18 @@ export function Smolin({
         if (!pending.has(id)) emit({ type: "DOCUMENT_INDEXED", id });
       active.current = pending;
     } catch (e) {
-      notify((e as Error).message);
+      notify(
+        e instanceof SyntaxError
+          ? "Resposta inesperada do servidor/proxy. Confira sua sessão da SALY e tente novamente."
+          : (e as Error).message,
+      );
     }
   };
   useEffect(() => {
     void refresh();
+    api("/knowledge/capabilities")
+      .then(setCapabilities)
+      .catch((error) => notify(error.message));
     const timer = setInterval(refresh, 2200);
     return () => {
       clearInterval(timer);
@@ -61,61 +72,146 @@ export function Smolin({
     setTransfers((items) =>
       items.map((item) => (item.id === id ? { ...item, ...patch } : item)),
     );
+  function request(
+    id: string,
+    method: string,
+    url: string,
+    body: Document | XMLHttpRequestBodyInit | null,
+    base = 0,
+    total = 0,
+  ): Promise<any> {
+    return new Promise((resolve, reject) => {
+      if (cancelled.current.has(id)) {
+        reject(new Error("Transferência cancelada."));
+        return;
+      }
+      const xhr = new XMLHttpRequest();
+      requests.current.set(id, xhr);
+      xhr.open(method, url);
+      xhr.timeout = 120000;
+      xhr.setRequestHeader("X-Saly-Request", "1");
+      if (body instanceof Blob)
+        xhr.setRequestHeader("Content-Type", "application/octet-stream");
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable)
+          update(id, {
+            progress: Math.min(
+              99,
+              Math.round(
+                total
+                  ? ((base + event.loaded) / total) * 100
+                  : (event.loaded / event.total) * 100,
+              ),
+            ),
+          });
+      };
+      const finish = () => requests.current.delete(id);
+      xhr.onload = () => {
+        finish();
+        try {
+          resolve(
+            uploadResponse(
+              xhr.responseText,
+              xhr.status,
+              xhr.getResponseHeader("Content-Type") ?? "",
+            ),
+          );
+        } catch (e) {
+          reject(e);
+        }
+      };
+      xhr.onerror = () => {
+        finish();
+        reject(
+          new Error("Falha de conexão; verifique o acervo antes de repetir."),
+        );
+      };
+      xhr.ontimeout = () => {
+        finish();
+        reject(
+          new Error(
+            "Tempo limite no envio. Confira sua conexão e tente novamente.",
+          ),
+        );
+      };
+      xhr.onabort = () => {
+        finish();
+        reject(
+          new Error(
+            "Transferência cancelada; confira se o arquivo já apareceu no acervo.",
+          ),
+        );
+      };
+      xhr.send(body);
+    });
+  }
   async function upload(files: FileList | File[]) {
     for (const file of Array.from(files)) {
       const id = crypto.randomUUID();
+      let session: string | undefined;
       setTransfers((items) => [
         ...items,
         { id, name: file.name, progress: 0, status: "Transferindo" },
       ]);
       emit({ type: "DOCUMENT_UPLOAD_STARTED", id });
-      await new Promise<void>((resolve) => {
-        const xhr = new XMLHttpRequest();
-        requests.current.set(id, xhr);
-        xhr.open("POST", "/api/knowledge");
-        xhr.setRequestHeader("X-Saly-Request", "1");
-        xhr.upload.onprogress = (e) => {
-          if (e.lengthComputable)
-            update(id, { progress: Math.round((e.loaded / e.total) * 100) });
-        };
-        const finish = () => {
-          requests.current.delete(id);
-          emit({ type: "DOCUMENT_UPLOAD_COMPLETED", id });
-          resolve();
-          void refresh();
-        };
-        xhr.onload = () => {
-          try {
-            const data = JSON.parse(xhr.responseText);
-            if (xhr.status >= 400)
-              throw Error(
-                typeof data.detail === "string"
-                  ? data.detail
-                  : "Upload recusado",
-              );
-            update(id, {
-              progress: 100,
-              status: data.duplicate
-                ? "Duplicata já existente"
-                : "Recebido — acompanhe o processamento abaixo",
-            });
-          } catch (e) {
-            update(id, { status: "Falha", error: (e as Error).message });
+      try {
+        if (capabilities && file.size > capabilities.max_upload_bytes)
+          throw new Error(
+            `Arquivo acima do limite atual de ${Math.round(capabilities.max_upload_bytes / 1024 / 1024)} MB.`,
+          );
+        let result: any;
+        if (file.size > 4 * 1024 * 1024) {
+          const initialized = await post("/knowledge/uploads", {
+            name: file.name,
+            size: file.size,
+          });
+          session = initialized.id;
+          for (let offset = 0; offset < file.size;) {
+            const end = Math.min(file.size, offset + initialized.chunk_bytes);
+            const acknowledged = await request(
+              id,
+              "PUT",
+              `/api/knowledge/uploads/${session}?offset=${offset}`,
+              file.slice(offset, end),
+              offset,
+              file.size,
+            );
+            offset = acknowledged.offset;
           }
-          finish();
-        };
-        xhr.onerror = () => {
-          update(id, { status: "Falha de conexão" });
-          finish();
-        };
-        xhr.onabort = () => {
-          update(id, { status: "Transferência cancelada" });
-          finish();
-        };
-        const form = new FormData();
-        form.append("file", file);
-        xhr.send(form);
-      });
+          if (cancelled.current.has(id))
+            throw new Error("Transferência cancelada.");
+          result = await post(`/knowledge/uploads/${session}/complete`);
+          session = undefined;
+        } else {
+          const form = new FormData();
+          form.append("file", file);
+          result = await request(id, "POST", "/api/knowledge", form);
+        }
+        if (typeof result.id !== "string")
+          throw new Error("Servidor não confirmou o arquivo.");
+        update(id, {
+          progress: 100,
+          status: result.duplicate
+            ? "Arquivo já existente"
+            : result.status === "stored_only"
+              ? "Original guardado; formato sem interpretação"
+              : "Original guardado — acompanhe a interpretação",
+        });
+      } catch (error) {
+        update(id, {
+          status: cancelled.current.has(id) ? "Cancelada" : "Falha",
+          error: smolinError(error),
+        });
+      } finally {
+        if (session)
+          await api(`/knowledge/uploads/${session}`, {
+            method: "DELETE",
+          }).catch(() => {});
+        requests.current.delete(id);
+        cancelled.current.delete(id);
+        emit({ type: "DOCUMENT_UPLOAD_COMPLETED", id });
+        void refresh();
+      }
     }
   }
   return (
@@ -136,13 +232,15 @@ export function Smolin({
         <span>↥</span>
         <strong>Solte seus documentos aqui</strong>
         <small>
-          PDF, TXT ou Markdown · múltiplos arquivos · limite padrão de 10 MB por
-          arquivo
+          Todos os formatos podem ser guardados e baixados · até{" "}
+          {Math.round(
+            (capabilities?.max_upload_bytes ?? 64 * 1024 * 1024) / 1024 / 1024,
+          )}{" "}
+          MB por arquivo · envios grandes em blocos de 2 MB
         </small>
         <input
           type="file"
           multiple
-          accept=".pdf,.txt,.md"
           aria-label="Importar documentos"
           onChange={(e) => {
             if (e.target.files) void upload(e.target.files);
@@ -150,6 +248,11 @@ export function Smolin({
           }}
         />
       </label>
+      <p>
+        PDF, textos e arquivos Office/EPUB têm extração local. Imagens usam OCR
+        quando instalado; vídeos usam quadros amostrados. Outros formatos ficam
+        guardados sem execução nem alegação de interpretação.
+      </p>
       {transfers.map((t) => (
         <div className="card transfer" key={t.id}>
           <strong>{t.name}</strong>
@@ -162,7 +265,12 @@ export function Smolin({
             {t.status} · {t.progress}% transferido {t.error}
           </small>
           {requests.current.has(t.id) && (
-            <button onClick={() => requests.current.get(t.id)?.abort()}>
+            <button
+              onClick={() => {
+                cancelled.current.add(t.id);
+                requests.current.get(t.id)?.abort();
+              }}
+            >
               Cancelar transferência
             </button>
           )}
@@ -170,7 +278,12 @@ export function Smolin({
       ))}
       <div className="library-stats">
         <span>{docs.length} documentos</span>
-        <span>{docs.reduce((a, d) => a + (d.page_count || 0), 0)} páginas</span>
+        <span>
+          {docs
+            .filter((d) => d.mime === "application/pdf")
+            .reduce((a, d) => a + (d.page_count || 0), 0)}{" "}
+          páginas PDF
+        </span>
         <span>
           {docs.reduce((a, d) => a + d.file_size, 0).toLocaleString("pt-BR")}{" "}
           bytes preservados
@@ -187,7 +300,11 @@ export function Smolin({
               await api("/knowledge/search?q=" + encodeURIComponent(query)),
             );
           } catch (e) {
-            notify((e as Error).message);
+            notify(
+              e instanceof SyntaxError
+                ? "Resposta inesperada do servidor/proxy. Confira sua sessão da SALY e tente novamente."
+                : (e as Error).message,
+            );
           } finally {
             emit({ type: "TOOL_COMPLETED", id: "search" });
           }
@@ -220,7 +337,7 @@ export function Smolin({
             <small>
               Processamento real ·{" "}
               {docs.find((d) => d.id === j.document_id)?.name} ·{" "}
-              {j.processed_pages || 0} páginas extraídas
+              {j.processed_pages || 0} partes indexadas
             </small>
             <progress max="100" value={j.progress} />
             <button
@@ -243,16 +360,41 @@ export function Smolin({
             </div>
             <h2>{d.name}</h2>
             <small>
-              {d.page_count ?? "—"} páginas · {d.chunks} trechos · vetores:{" "}
-              {d.embedding_status}
+              {d.page_count ?? "—"}{" "}
+              {d.unit === "page" || !d.unit
+                ? "páginas"
+                : "seções/quadros/segmentos"}{" "}
+              · {d.chunks} trechos · vetores: {d.embedding_status}
             </small>
             <div className="toolbar">
               <button
                 className="secondary"
-                onClick={async () => setDetail(await api("/knowledge/" + d.id))}
+                onClick={async () => {
+                  try {
+                    setDetail(await api("/knowledge/" + d.id));
+                  } catch (error) {
+                    notify(
+                      error instanceof SyntaxError
+                        ? "Servidor/proxy respondeu em formato inesperado. Confira sua sessão."
+                        : (error as Error).message,
+                    );
+                  }
+                }}
               >
                 Detalhes e texto
               </button>
+              {d.mime === "application/pdf" && (
+                <Link className="file-button" to={`/knowledge/${d.id}/read`}>
+                  Ler PDF como livro
+                </Link>
+              )}
+              <a
+                className="file-button"
+                href={`/api/knowledge/${d.id}/original?download=true`}
+                download={d.name}
+              >
+                Baixar original
+              </a>
               <a
                 className="file-button"
                 href={`/api/knowledge/${d.id}/original`}
@@ -263,12 +405,17 @@ export function Smolin({
               </a>
               <button
                 className="text-button"
+                disabled={d.kind === "binary"}
                 onClick={async () => {
                   try {
                     await post(`/knowledge/${d.id}/reprocess`);
                     await refresh();
                   } catch (e) {
-                    notify((e as Error).message);
+                    notify(
+                      e instanceof SyntaxError
+                        ? "Resposta inesperada do servidor/proxy. Confira sua sessão da SALY e tente novamente."
+                        : (e as Error).message,
+                    );
                   }
                 }}
               >
@@ -291,13 +438,66 @@ export function Smolin({
                     setDetail(null);
                     await refresh();
                   } catch (e) {
-                    notify((e as Error).message);
+                    notify(
+                      e instanceof SyntaxError
+                        ? "Resposta inesperada do servidor/proxy. Confira sua sessão da SALY e tente novamente."
+                        : (e as Error).message,
+                    );
                   }
                 }}
               >
                 Excluir
               </button>
             </div>
+            {d.interpretation_notice && <p>{d.interpretation_notice}</p>}
+            {d.media_info && (
+              <p>
+                Duração: {d.media_info.duration_seconds?.toFixed(1)} s ·{" "}
+                {d.transcribed
+                  ? "Fala transcrita automaticamente; revise erros."
+                  : "Fala ainda não transcrita."}
+              </p>
+            )}
+            {d.kind === "audio" && (
+              <audio
+                controls
+                preload="none"
+                src={`/api/knowledge/${d.id}/original`}
+              />
+            )}
+            {d.kind === "video" && (
+              <video
+                className="smolin-video"
+                controls
+                preload="none"
+                src={`/api/knowledge/${d.id}/original`}
+              />
+            )}
+            {["audio", "video"].includes(d.kind) && (
+              <button
+                className="secondary"
+                disabled={!capabilities?.transcription.available}
+                onClick={async () => {
+                  try {
+                    await post(`/knowledge/${d.id}/transcribe`);
+                    await refresh();
+                  } catch (error) {
+                    notify((error as Error).message);
+                  }
+                }}
+              >
+                Transcrever fala localmente
+              </button>
+            )}
+            {["audio", "video"].includes(d.kind) &&
+              !capabilities?.transcription.available && (
+                <p>
+                  Transcrição local não instalada (até 30 minutos por arquivo).
+                  No servidor:{" "}
+                  <code>bash scripts/install-transcription.sh</code>. Metadados
+                  e OCR de quadros não substituem a transcrição.
+                </p>
+              )}
             {d.status === "ocr_required" && (
               <p>
                 Original preservado. OCR é necessário; nenhum texto foi
@@ -328,13 +528,20 @@ export function Smolin({
             Pipeline: {detail.pipeline} · Páginas sem texto:{" "}
             {detail.empty_pages?.join(", ") || "nenhuma identificada"}
           </p>
-          {!detail.pages.length && detail.content && (
+          {!detail.pages?.length && detail.content && (
             <pre className="document-text">{detail.content}</pre>
           )}
-          {detail.pages.map((p: any) => (
+          {detail.pages?.map((p: any) => (
             <details key={p.page}>
               <summary>
-                Página {p.page} · {p.content.length} caracteres
+                {p.label ??
+                  (detail.unit === "page" || !detail.unit
+                    ? `Página ${p.page}`
+                    : `Trecho ${p.page}`)}{" "}
+                {p.start_seconds !== undefined
+                  ? ` · ${p.start_seconds.toFixed(2)}s`
+                  : ""}{" "}
+                · {p.content.length} caracteres
               </summary>
               <pre className="document-text">
                 {p.content || "OCR necessário."}

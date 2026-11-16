@@ -1,9 +1,29 @@
+import { readFileSync, readdirSync } from "node:fs";
+import { resolve } from "node:path";
 import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 function publicWorker(): Plugin {
   return {
     name: "saly-private-safe-pwa",
     generateBundle(_, bundle) {
+      this.emitFile({
+        type: "asset",
+        fileName: "pdfjs/LICENSE",
+        source: readFileSync(resolve("node_modules/pdfjs-dist/LICENSE")),
+      });
+      for (const folder of ["cmaps", "standard_fonts", "wasm"]) {
+        for (const filename of readdirSync(
+          resolve("node_modules/pdfjs-dist", folder),
+        )) {
+          this.emitFile({
+            type: "asset",
+            fileName: `pdfjs/${folder}/${filename}`,
+            source: readFileSync(
+              resolve("node_modules/pdfjs-dist", folder, filename),
+            ),
+          });
+        }
+      }
       const files = [
         "/",
         "/offline.html",
@@ -11,7 +31,7 @@ function publicWorker(): Plugin {
         "/icons/saly-192.png",
         "/icons/saly-512.png",
         ...Object.keys(bundle)
-          .filter((name) => /\.(js|css)$/.test(name))
+          .filter((name) => /\.(js|mjs|css)$/.test(name))
           .map((name) => "/" + name),
       ];
       const version = Object.keys(bundle).join("|");

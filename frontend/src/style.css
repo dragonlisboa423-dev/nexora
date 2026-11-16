@@ -1752,3 +1752,126 @@ fieldset {
 .science-block input[type="radio"] {
   flex-shrink: 0;
 }
+
+.smolin-video {
+  width: 100%;
+  max-height: 360px;
+  display: block;
+  margin: 18px 0;
+}
+.memory-grid audio {
+  max-width: 100%;
+}
+.pdf-book h1 {
+  overflow-wrap: anywhere;
+  font-size: 1.8rem;
+}
+.pdf-book-frame {
+  width: 100%;
+  overflow: auto;
+  border-radius: 12px;
+  margin: 20px 0;
+  padding: 10px;
+  background: #031014;
+  perspective: 1600px;
+}
+.pdf-original-spread {
+  display: grid;
+  gap: 18px;
+  width: max-content;
+  margin: auto;
+}
+.pdf-leaf {
+  padding: 8px;
+  background: #fff;
+  color: #233632;
+  box-shadow: 0 12px 30px #0008;
+  animation: pdf-page-turn 0.35s ease-out;
+  transform-origin: left center;
+  position: relative;
+}
+.pdf-page-art {
+  position: relative;
+  isolation: isolate;
+}
+.pdf-page-art canvas {
+  display: block;
+}
+.pdf-page-art .textLayer {
+  position: absolute;
+  inset: 0;
+  --scale-factor: 1;
+}
+.pdf-leaf > small {
+  display: block;
+  text-align: center;
+  padding: 8px;
+  color: #294a44;
+}
+.pdf-book-frame.no-turn .pdf-leaf {
+  animation: none;
+}
+.pdf-accessible {
+  white-space: pre-wrap;
+  line-height: 1.8;
+}
+.pdf-book .toolbar {
+  align-items: center;
+}
+.pdf-book .toolbar label {
+  max-width: 200px;
+}
+@keyframes pdf-page-turn {
+  from {
+    transform: rotateY(-12deg);
+    filter: brightness(0.8);
+  }
+  to {
+    transform: rotateY(0);
+    filter: brightness(1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pdf-leaf {
+    animation: none;
+  }
+}
+
+/* PDF.js Apache-2.0 text-layer layout, scoped to preserve the SALY interface. */
+.pdf-page-art .textLayer {
+  line-height: 1;
+  letter-spacing: normal;
+  word-spacing: normal;
+  text-size-adjust: none;
+  forced-color-adjust: none;
+  transform-origin: 0 0;
+  overflow: clip;
+  --min-font-size: 1;
+  --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+  --min-font-size-inv: calc(1 / var(--min-font-size));
+}
+.pdf-page-art .textLayer :is(span, br) {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0 0;
+  user-select: text;
+}
+.pdf-page-art .textLayer > :not(.markedContent),
+.pdf-page-art .textLayer .markedContent span:not(.markedContent) {
+  z-index: 1;
+  --font-height: 0;
+  font-size: calc(var(--text-scale-factor) * var(--font-height));
+  --scale-x: 1;
+  --rotate: 0deg;
+  transform: rotate(var(--rotate)) scaleX(var(--scale-x))
+    scale(var(--min-font-size-inv));
+}
+.pdf-page-art .textLayer .markedContent {
+  display: contents;
+}
+.pdf-page-art .textLayer ::selection {
+  background: #45bfa86b;
+  color: transparent;
+}
