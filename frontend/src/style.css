@@ -1658,3 +1658,38 @@ details > summary {
     animation: none;
   }
 }
+
+.science-block svg {
+  display: block;
+  width: 100%;
+  max-height: 360px;
+  color: #b8d9cc;
+  margin: 16px auto;
+}
+.science-block input[type="range"] {
+  width: 100%;
+  accent-color: #8fdbbc;
+}
+.science-block table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.science-block th,
+.science-block td {
+  padding: 8px;
+  border-bottom: 1px solid #34574c;
+  text-align: left;
+}
+.dna-string {
+  font-family: monospace;
+  letter-spacing: 0.15em;
+  overflow-wrap: anywhere;
+}
+.microscope-field {
+  max-width: 360px;
+  margin: auto;
+}
+.science-block button[aria-pressed="true"] {
+  border-color: #dfdfa6;
+  background: #334c36;
+}

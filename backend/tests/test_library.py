@@ -166,3 +166,29 @@ def test_blocks_reject_code_unsafe_urls_unknown_configuration_and_cross_book_ass
     client.cookies.clear()
     assert client.get("/api/books").status_code == 401
     assert client.get("/api/private-assets/" + asset).status_code == 401
+
+
+def test_initial_biology_is_valid_original_draft_idempotent_and_not_resurrected(client):
+    from backend.biology import ensure_biology_draft
+    from backend.library import Book
+
+    ensure_biology_draft()
+    ensure_biology_draft()
+    books = store.all_records("books")
+    assert len(books) == 1 and not books[0].get("published_version_id")
+    data = Book.model_validate(books[0]["draft"])
+    assert data.publication_status == "draft" and len(data.chapters) == 8
+    assert len([p for c in data.chapters for p in c.pages]) == 9
+    blocks = {block.type for c in data.chapters for p in c.pages for block in p.blocks}
+    assert {"text", "quiz", "dnaLab", "ecologyLab", "cellViewer", "microscope"} <= blocks
+    assert not data.chapters[4].pages and not data.chapters[6].pages
+    assert all(s.checked_on is None for c in data.chapters for p in c.pages for s in p.sources)
+    assert (
+        client.delete(
+            "/api/books/" + books[0]["id"] + "?base_revision=1&confirm=true",
+            headers={"X-Saly-Request": "1"},
+        ).status_code
+        == 200
+    )
+    ensure_biology_draft()
+    assert not store.all_records("books")

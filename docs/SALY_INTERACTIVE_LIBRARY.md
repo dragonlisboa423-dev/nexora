@@ -13,3 +13,11 @@ Tutoria prepara livro/capítulo/página/trecho/fontes no campo de conversa media
 Imagens de capa/páginas usam upload privado normalizado. Os contratos permitem áudio/vídeo privados; seu upload depende da etapa multimídia e não é anunciado como disponível antes dela. Microscópio, célula, DNA e ecologia recebem motores didáticos na fase de Biologia. Modelos 3D não são necessários ao fallback 2D; não há modelo anatômico 3D instalado. A cópia de livros no cofre é uma extensão separada; a primeira versão do leitor depende de rede.
 
 Verificação: três testes Python de domínio e `scripts/browser_library.py` com Chromium real passaram, cobrindo autoria, páginas duplas/únicas, progresso, notas, última página, publicação e contexto sem envio. Não comprova revisão científica da proprietária ou Android físico.
+
+## Edição inicial de Biologia
+
+Na fase 6, o primeiro início cria uma única edição **draft**, com nove páginas originais, capítulos 1–4 iniciais, prévia do capítulo 6 e sumário planejado dos demais. A instalação é idempotente; excluir o livro não o recria. A autoria assistida está declarada, e nenhuma publicação ocorre automaticamente. Fontes são referências bibliográficas, sem copiar textos/imagens de Campbell, Alberts ou OpenStax. Consulta online atual e revisão científica editorial não foram certificadas; datas de verificação permanecem nulas.
+
+Atividades implementadas: célula 2D com seleção e distinção entre tipos animal/vegetal/procarionte; DNA com complemento antiparalelo/RNA da fita codificante, substituição e cruzamento mendeliano de um locus; modelo logístico com gráfico/tabela e hipóteses explícitas; quizzes com tentativas persistentes; microscópio esquemático com zoom, foco e iluminação digitais. Não há micrografias licenciadas, escala física calibrada, previsão ecológica real ou modelo anatômico 3D. Esse alcance é deliberadamente identificado na interface. As atividades não executam código fornecido pelo livro.
+
+Três testes Vitest adicionais verificam regras de DNA, cruzamentos e comportamento de equilíbrio/capacidade da logística. Um teste Python verifica o rascunho validado, instalação idempotente e ausência de recriação após exclusão. `browser_biology.py` passou com interações reais e contexto do elemento preparado na conversa sem envio remoto; layout móvel sem erros de página.

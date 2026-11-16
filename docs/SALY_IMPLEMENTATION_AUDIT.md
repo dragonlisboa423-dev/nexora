@@ -72,3 +72,7 @@ Compras manuais/orçamento em centavos, comprovantes normalizados privados e gav
 ## Progresso comprovado · fase 5
 
 Editor manual e leitor estruturado foram testados com versões publicadas imutáveis, rascunhos/restauração, notas, progresso, páginas duplas/únicas e contexto de tutoria apenas preparado. Conteúdo científico, mídia audiovisual e cópia de livros offline são extensões posteriores; ver `SALY_INTERACTIVE_LIBRARY.md`.
+
+## Progresso comprovado · fase 6
+
+Rascunho original de Biologia com nove páginas e atividades determinísticas foi exercitado por Python, Vitest e Chromium móvel. O microscópio é um esquema explícito sem calibração física; capítulos futuros e revisão editorial continuam identificados. Nenhuma obra externa foi importada.

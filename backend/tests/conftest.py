@@ -12,6 +12,7 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setenv("SALY_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("SALY_OWNER_PASSWORD_HASH", "")
     monkeypatch.setenv("SALY_DISABLE_ALARM_SCHEDULER", "1")
+    monkeypatch.setenv("SALY_DISABLE_BIOLOGY_SEED", "1")
     monkeypatch.setattr(main.provider, "key", "")
     from backend.agent.registry import integrations
     from backend.smolin.service import embedding_provider

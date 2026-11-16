@@ -44,3 +44,7 @@ Regressão após a fase 4: **120 testes Python passaram, 1 PostgreSQL pulado por
 ## Fase 5 · Biblioteca
 
 Três testes Python passaram: publicação imutável, restauração como rascunho, revisão concorrente, progresso/tentativas/notas persistidos, exclusão completa e recusa de código/configuração/URL/mídia cruzada. `browser_library.py` passou: autoria manual, duas páginas reais, progresso/marcador/anotação, busca/última página, revisão/publicação explícita, viewport móvel e contexto preparado sem envio. O teste identificou rótulo acessível incompleto em textarea com conteúdo; corrigido. Build passou e não houve erros de página ou chamadas remotas.
+
+## Fase 6 · Biologia inicial
+
+Quatro testes de Biblioteca passaram, incluindo rascunho original/idempotência/exclusão; **12 Vitest e build passaram**. `browser_biology.py` passou em Chromium móvel: quiz persistido, cálculo/gráfico logístico, DNA/RNA, distinção celular, controles digitais do microscópio e contexto autorizado do elemento preparado sem envio. Não comprova micrografias reais, calibração, revisão editorial ou previsão ecológica.

@@ -17,6 +17,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from . import storage as store
 from .agent.registry import REGISTRY, availability, decide, request_tool, schemas
+from .biology import ensure_biology_draft
 from .core import activate as activate_core
 from .core import core_status, policy_prompt, retrieve_principles
 from .core.admin import router as core_admin_router
@@ -42,6 +43,8 @@ from .voices import router as voices_router
 async def lifespan(app):
     store.initialize()
     activate_core()
+    if os.environ.get("SALY_DISABLE_BIOLOGY_SEED") != "1":
+        ensure_biology_draft()
     for job in store.all_records("document_jobs"):
         if job["status"] in ("queued", "processing") and not job.get("cancelled"):
             smolin.start(job["document_id"], job["id"])
