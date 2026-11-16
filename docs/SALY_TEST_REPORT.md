@@ -48,3 +48,7 @@ Três testes Python passaram: publicação imutável, restauração como rascunh
 ## Fase 6 · Biologia inicial
 
 Quatro testes de Biblioteca passaram, incluindo rascunho original/idempotência/exclusão; **12 Vitest e build passaram**. `browser_biology.py` passou em Chromium móvel: quiz persistido, cálculo/gráfico logístico, DNA/RNA, distinção celular, controles digitais do microscópio e contexto autorizado do elemento preparado sem envio. Não comprova micrografias reais, calibração, revisão editorial ou previsão ecológica.
+
+## Fase 7 · Estúdio
+
+Oito testes Python de mídia passaram, com FFmpeg/FFprobe reais, arquivo MP4, legendas/fade, corte, duas trilhas de áudio, cancelamento em execução e histórico. O adaptador Cloudflare foi testado somente com transporte controlado, incluindo limite diário; não houve inferência externa. `browser_studio.py` passou com download/checksum e reprodução MP4 nativa (`currentTime > 0`), recarga e layout móvel. Fontes oficiais Cloudflare foram recuperadas pelo espelho do próprio fornecedor no GitHub; conta/token/termos BFL e geração real permanecem bloqueados.

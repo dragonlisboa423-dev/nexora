@@ -27,6 +27,9 @@ from .imports import MemoryImport, validation_details
 from .library import router as library_router
 from .llm.connection import verify_connection
 from .llm.provider import Provider, ProviderError
+from .media import recover_jobs
+from .media import router as media_router
+from .media import shutdown as shutdown_media
 from .memory import index_memory, search_memories
 from .personal import router as personal_router
 from .planning import router as planning_router
@@ -48,6 +51,7 @@ async def lifespan(app):
     for job in store.all_records("document_jobs"):
         if job["status"] in ("queued", "processing") and not job.get("cancelled"):
             smolin.start(job["document_id"], job["id"])
+    recover_jobs()
     alarm_task = (
         asyncio.create_task(alarm_scheduler())
         if os.environ.get("SALY_DISABLE_ALARM_SCHEDULER") != "1"
@@ -56,6 +60,7 @@ async def lifespan(app):
     try:
         yield
     finally:
+        await shutdown_media()
         if alarm_task:
             alarm_task.cancel()
             await asyncio.gather(alarm_task, return_exceptions=True)
@@ -1066,6 +1071,7 @@ app.include_router(voices_router)
 app.include_router(planning_router)
 app.include_router(personal_router)
 app.include_router(library_router)
+app.include_router(media_router)
 
 DIST = Path(__file__).resolve().parents[1] / "frontend" / "dist"
 

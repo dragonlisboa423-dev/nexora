@@ -1693,3 +1693,44 @@ details > summary {
   border-color: #dfdfa6;
   background: #334c36;
 }
+
+.asset-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  gap: 18px;
+}
+.asset-gallery img,
+.asset-gallery video,
+.asset-gallery audio {
+  width: 100%;
+  max-height: 240px;
+  object-fit: contain;
+}
+.asset-gallery small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.asset-gallery code {
+  display: block;
+  font-size: 0.75rem;
+}
+.science-block fieldset label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.card,
+fieldset {
+  min-width: 0;
+}
+.card {
+  overflow-wrap: anywhere;
+}
+.asset-gallery audio {
+  max-width: 100%;
+  min-width: 0;
+}
+.personal-grid > * {
+  min-width: 0;
+}

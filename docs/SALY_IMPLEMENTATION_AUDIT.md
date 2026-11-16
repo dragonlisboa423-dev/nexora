@@ -76,3 +76,7 @@ Editor manual e leitor estruturado foram testados com versões publicadas imutá
 ## Progresso comprovado · fase 6
 
 Rascunho original de Biologia com nove páginas e atividades determinísticas foi exercitado por Python, Vitest e Chromium móvel. O microscópio é um esquema explícito sem calibração física; capítulos futuros e revisão editorial continuam identificados. Nenhuma obra externa foi importada.
+
+## Progresso comprovado · fase 7 parcial
+
+Edição local de imagem e montagem FFmpeg com clipes, imagens, duas trilhas, legendas, transições, cancelamento e MP4 verificável passaram por testes reais. Conector Cloudflare segue desativado: contrato oficial recuperado no GitHub, mas conta/credencial/termos e geração externa não comprovados. Vídeo generativo continua não configurado. Veja `SALY_MEDIA_PROVIDERS.md` e `SALY_FREE_TIER_LIMITS.md`.

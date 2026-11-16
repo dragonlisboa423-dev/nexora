@@ -292,24 +292,42 @@ function BookEditor({
     mutate(next);
     onChange(next);
   }
-  async function upload(file: File | null, cover = false) {
+  async function upload(
+    file: File | null,
+    cover = false,
+    kind: "image" | "audio" | "video" = "image",
+  ) {
     if (!file || !value.id) return;
     try {
       const form = new FormData();
       form.set("file", file);
-      const asset = await api(`/books/${value.id}/image`, {
-        method: "POST",
-        body: form,
-      });
+      const asset = await api(
+        kind === "image"
+          ? `/books/${value.id}/image`
+          : `/media/assets?kind=${kind}&book_id=${value.id}`,
+        {
+          method: "POST",
+          body: form,
+        },
+      );
       change((book) => {
         if (cover) book.cover_asset_id = asset.id;
         else
-          book.chapters[ci].pages[pi].blocks.push({
-            type: "image",
-            asset_id: asset.id,
-            alt: "Descreva esta imagem",
-            credit: "Informe autoria e licença antes de publicar",
-          });
+          book.chapters[ci].pages[pi].blocks.push(
+            kind === "image"
+              ? {
+                  type: "image",
+                  asset_id: asset.id,
+                  alt: "Descreva esta imagem",
+                  credit: "Informe autoria e licença antes de publicar",
+                }
+              : {
+                  type: kind,
+                  asset_id: asset.id,
+                  description: "Descreva a mídia para acessibilidade",
+                  credit: "Informe autoria e licença antes de publicar",
+                },
+          );
       });
     } catch (e) {
       notify((e as Error).message);
@@ -752,6 +770,25 @@ function BookEditor({
                 </label>
               )}
             </div>
+            {value.id && (
+              <label>
+                Áudio ou vídeo privado da página
+                <input
+                  type="file"
+                  accept="audio/*,video/mp4,video/webm"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] ?? null;
+                    if (file)
+                      void upload(
+                        file,
+                        false,
+                        file.type.startsWith("audio/") ? "audio" : "video",
+                      );
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+            )}
             <details>
               <summary>Fontes, autoria e licenças</summary>
               {page.sources.map((source, si) => (

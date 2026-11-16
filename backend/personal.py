@@ -264,6 +264,7 @@ def remove_asset(key):
 
 @router.get("/private-assets/{key}")
 def image(key: str, _=Depends(owner)):
+    record = store.get("private_assets", key)
     with store.db() as connection:
         content = connection.execute(
             select(store.asset_contents.c.content).where(store.asset_contents.c.id == key)
@@ -272,11 +273,11 @@ def image(key: str, _=Depends(owner)):
         raise HTTPException(404, "Imagem não encontrada")
     return Response(
         content,
-        media_type="image/png",
+        media_type=(record or {}).get("mime", "application/octet-stream"),
         headers={
             "Cache-Control": "private, no-store",
             "X-Content-Type-Options": "nosniff",
-            "Content-Disposition": 'inline; filename="comprovante.png"',
+            "Content-Disposition": f'inline; filename="saly-{key}.{ {"image/png": "png", "video/mp4": "mp4", "audio/wav": "wav"}.get((record or {}).get("mime"), "bin") }"',
         },
     )
 

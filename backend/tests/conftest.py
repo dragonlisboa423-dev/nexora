@@ -21,6 +21,8 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(integrations, "search_key", "")
     monkeypatch.setattr(integrations, "web_hosts", set())
     monkeypatch.setattr(embedding_provider, "url", "")
+    monkeypatch.setenv("SALY_CF_API_TOKEN", "")
+    monkeypatch.setenv("SALY_CF_WORKERS_FREE_CONFIRMED", "0")
     security.ATTEMPTS.clear()
     with TestClient(main.app) as c:
         security.set_owner("test-private-owner-123")

@@ -27,6 +27,8 @@ def test_server(port=8003, extra_environment=None):
             "SALY_EMBEDDING_URL": "",
             "SALY_GITHUB_TOKEN": "",
             "SALY_SEARCH_API_KEY": "",
+            "SALY_CF_API_TOKEN": "",
+            "SALY_CF_WORKERS_FREE_CONFIRMED": "0",
             **(extra_environment or {}),
         }
         subprocess.run(

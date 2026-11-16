@@ -30,3 +30,7 @@ Tabelas `purchases`, `drawers`, `links` usam revisões e changelog. `private_ass
 ## Biblioteca
 
 `books` guarda rascunho/versionamento e referência à publicação. `book_versions` contém snapshots imutáveis/hash/ação; `reading_progress` guarda página, concluídas, marcadores e tentativas; `book_annotations` guarda notas privadas vinculadas a livro/página. Revisões controlam concorrência. Mídias usam os BLOBs privados existentes, com `book_id` validado; não reutilizam comprovantes de compras. Todas são migrações aditivas.
+
+## Estúdio
+
+`media_jobs` guarda tipo, provedor, argumentos privados, entradas/saídas, estados, progresso real por etapa, erro sanitizado e timestamps. Binários usam `private_asset_contents`; metadados em `private_assets` separam escopo Estúdio, livro, tipo e método. Não se repetem automaticamente tarefas remotas em execução durante um reinício. Arquivos temporários por tarefa são descartados; resultados e entradas permanecem privados até exclusão.

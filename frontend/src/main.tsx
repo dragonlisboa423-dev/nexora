@@ -15,6 +15,7 @@ import {
   ShoppingBag,
   Folder,
   BookOpen,
+  Film,
   ChevronLeft,
   ChevronRight,
   Database,
@@ -64,6 +65,7 @@ const Purchases = lazy(() =>
 const Space = lazy(() =>
   import("./Personal").then((m) => ({ default: m.Space })),
 );
+const Studio = lazy(() => import("./Studio"));
 const Library = lazy(() => import("./Library"));
 import { AlarmNotifier } from "./AlarmNotifier";
 import { VerificationDetails, type Verification } from "./Laboratory";
@@ -422,6 +424,7 @@ function App() {
     ["/purchases", "Compras", ShoppingBag],
     ["/space", "Espaço", Folder],
     ["/library", "Biblioteca", BookOpen],
+    ["/studio", "Estúdio Multimídia", Film],
     ["/tools", "Ferramentas e integrações", ShieldCheck],
     ["/voices", "Biblioteca de vozes", AudioLines],
     ["/activity", "Atividades", ActivityIcon],
@@ -1046,6 +1049,14 @@ function App() {
                     resume={audio.resume}
                     speechState={state}
                   />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/studio"
+              element={
+                <Suspense fallback={<p>Carregando estúdio…</p>}>
+                  <Studio notify={setError} />
                 </Suspense>
               }
             />
