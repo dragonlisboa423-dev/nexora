@@ -21,12 +21,14 @@ function Organic({
   quality,
   reduced,
   pulse,
+  speechSignal,
 }: {
   state: SalyState;
   level: React.MutableRefObject<number>;
   quality: string;
   reduced: boolean;
   pulse: number;
+  speechSignal?: React.MutableRefObject<boolean>;
 }) {
   const group = useRef<THREE.Group>(null!);
   const material = useMemo(
@@ -60,7 +62,9 @@ function Organic({
       state === "listening"
         ? level.current
         : state === "speaking"
-          ? 0.3 + Math.abs(Math.sin(t * 5)) * 0.3
+          ? speechSignal?.current
+            ? level.current
+            : 0.12
           : [
                 "thinking",
                 "searching",
@@ -155,6 +159,7 @@ export function Core(props: {
   level: React.MutableRefObject<number>;
   quality: string;
   pulse: number;
+  speechSignal?: React.MutableRefObject<boolean>;
 }) {
   const container = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -162,7 +167,12 @@ export function Core(props: {
     function update() {
       container.current?.style.setProperty(
         "--audio-energy",
-        String(props.state === "listening" ? props.level.current : 0),
+        String(
+          props.state === "listening" ||
+            (props.state === "speaking" && props.speechSignal?.current)
+            ? props.level.current
+            : 0,
+        ),
       );
       frame = requestAnimationFrame(update);
     }
@@ -190,6 +200,7 @@ export function Core(props: {
     <div
       ref={container}
       className={`core ${props.state}`}
+      data-speech-signal={props.speechSignal?.current ? "pcm" : "events"}
       role="img"
       aria-label={`Núcleo Saly: ${props.state}`}
     >
@@ -209,7 +220,7 @@ export function Core(props: {
         </Boundary>
       )}
       {props.pulse > 0 && <div key={props.pulse} className="response-pulse" />}
-      {props.state === "speaking" && (
+      {props.state === "speaking" && props.speechSignal?.current && (
         <div className="speech-waves">
           <i />
           <i />

@@ -12,6 +12,7 @@ from ..memory import index_memory, search_memories
 from ..services import Memory, memory_delete, memory_save
 from ..smolin.service import search as smolin_search
 from ..tools import calculate
+from ..voices import voices as voice_catalog
 
 
 class Args(BaseModel):
@@ -80,6 +81,12 @@ class Calculation(Args):
 
 # name: (schema, description, approval required, integration)
 REGISTRY = {
+    "list_voices": (
+        Empty,
+        "Consultar catálogo e configuração real de motores de voz; a reprodução é acionada na interface.",
+        False,
+        None,
+    ),
     "calculate": (Calculation, "Calcular aritmética sem executar código.", False, None),
     "check_load": (
         LoadCheck,
@@ -184,6 +191,8 @@ def normalized_reminder(args):
 
 async def execute(name, args):
     args = validate(name, args)
+    if name == "list_voices":
+        return voice_catalog(True)
     if name == "check_load":
         return check_load(args)
     if name == "check_energy_cost":

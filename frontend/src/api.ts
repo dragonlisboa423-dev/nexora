@@ -50,6 +50,7 @@ export function download(name: string, data: unknown) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 export type SalyState =
+  | "synthesizing"
   | "idle"
   | "listening"
   | "thinking"

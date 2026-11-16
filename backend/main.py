@@ -31,6 +31,7 @@ from .services import Memory, memory_delete, memory_save
 from .smolin import service as smolin
 from .sync import router as sync_router
 from .tools import calculate
+from .voices import router as voices_router
 
 
 @asynccontextmanager
@@ -1044,6 +1045,7 @@ def backup(_=Depends(owner)):
 
 app.include_router(core_admin_router)
 app.include_router(sync_router)
+app.include_router(voices_router)
 
 DIST = Path(__file__).resolve().parents[1] / "frontend" / "dist"
 

@@ -50,6 +50,7 @@ import { PwaUpdate } from "./pwa";
 const OfflineWorkspace = lazy(() => import("./offline/OfflineWorkspace"));
 import { VerificationDetails, type Verification } from "./Laboratory";
 const labels: Record<SalyState, string> = {
+  synthesizing: "Preparando áudio",
   idle: "Em repouso",
   listening: "Escutando",
   thinking: "Gerando resposta",
@@ -586,6 +587,7 @@ function App() {
                       <Core
                         state={state}
                         level={audio.level}
+                        speechSignal={audio.speechSignal}
                         quality={prefs?.graphics || "auto"}
                         pulse={pulse}
                       />
@@ -878,6 +880,7 @@ function App() {
                           {(busy ||
                             audio.listening ||
                             state === "speaking" ||
+                            state === "synthesizing" ||
                             state === "paused") && (
                             <button
                               type="button"
@@ -950,6 +953,13 @@ function App() {
                     save={save}
                     voices={audio.voices}
                     speak={(s) => audio.speak(s, prefs.voice)}
+                    preview={(uri, text) =>
+                      audio.speak(text, { ...prefs.voice, voiceURI: uri })
+                    }
+                    stop={audio.stopSpeech}
+                    pause={audio.pause}
+                    resume={audio.resume}
+                    speechState={state}
                   />
                 )
               }

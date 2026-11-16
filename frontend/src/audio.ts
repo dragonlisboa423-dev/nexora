@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { Prefs, SalyState } from "./api";
+import { serverSpeech } from "./speech";
 // Recognition is vendor-dependent and can transmit audio to a browser provider.
 type Recognition = {
   lang: string;
@@ -33,6 +34,12 @@ export function useAudio(
     recognition = useRef<Recognition | null>(null),
     generation = useRef(0),
     utteranceVersion = useRef(0);
+  const speechSignal = useRef(false),
+    speechContext = useRef<AudioContext | null>(null),
+    speechSource = useRef<AudioBufferSourceNode | null>(null),
+    speechFrame = useRef(0),
+    speechAbort = useRef<AbortController | null>(null),
+    speechTick = useRef<(() => void) | null>(null);
   const [listening, setListening] = useState(false);
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   useEffect(() => {
@@ -151,10 +158,24 @@ export function useAudio(
   }
   function stopSpeech() {
     utteranceVersion.current++;
+    speechAbort.current?.abort();
+    speechAbort.current = null;
+    cancelAnimationFrame(speechFrame.current);
+    speechTick.current = null;
+    speechSource.current?.stop();
+    speechSource.current = null;
+    void speechContext.current?.close();
+    speechContext.current = null;
+    speechSignal.current = false;
+    level.current = 0;
     if ("speechSynthesis" in window) speechSynthesis.cancel();
     setState("idle");
   }
   function speak(text: string, prefs: Prefs["voice"]) {
+    if (prefs.voiceURI === "saly-espeak:pt-br-f3") {
+      void speakPCM(text, prefs);
+      return;
+    }
     if (!("speechSynthesis" in window)) {
       setError("Síntese de voz não suportada.");
       return;
@@ -196,6 +217,117 @@ export function useAudio(
     };
     speechSynthesis.speak(u);
   }
+  async function speakPCM(text: string, prefs: Prefs["voice"]) {
+    stopMic();
+    stopSpeech();
+    const version = utteranceVersion.current,
+      controller = new AbortController();
+    speechAbort.current = controller;
+    setState("synthesizing");
+    try {
+      const audio = new AudioContext();
+      speechContext.current = audio;
+      await audio.resume();
+      const raw = await serverSpeech.synthesize(
+        text,
+        prefs.rate,
+        prefs.pitch,
+        controller.signal,
+      );
+      if (version !== utteranceVersion.current) return;
+      const buffer = await audio.decodeAudioData(raw);
+      if (version !== utteranceVersion.current) return;
+      const source = audio.createBufferSource(),
+        gain = audio.createGain(),
+        analyser = audio.createAnalyser();
+      source.buffer = buffer;
+      gain.gain.value = prefs.volume;
+      analyser.fftSize = 512;
+      source.connect(gain);
+      gain.connect(analyser);
+      analyser.connect(audio.destination);
+      const samples = new Uint8Array(analyser.fftSize);
+      const tick = () => {
+        if (version !== utteranceVersion.current || audio.state !== "running")
+          return;
+        analyser.getByteTimeDomainData(samples);
+        level.current = Math.min(
+          1,
+          Math.sqrt(
+            samples.reduce(
+              (sum, value) => sum + ((value - 128) / 128) ** 2,
+              0,
+            ) / samples.length,
+          ) * 5,
+        );
+        speechFrame.current = requestAnimationFrame(tick);
+      };
+      speechSource.current = source;
+      speechTick.current = tick;
+      speechSignal.current = true;
+      source.onended = () => {
+        if (version !== utteranceVersion.current) return;
+        cancelAnimationFrame(speechFrame.current);
+        level.current = 0;
+        speechSignal.current = false;
+        speechSource.current = null;
+        speechContext.current = null;
+        void audio.close();
+        setState("idle");
+      };
+      source.start();
+      tick();
+      setState("speaking");
+      pulse();
+    } catch (error) {
+      if (
+        version !== utteranceVersion.current ||
+        (error as Error).name === "AbortError"
+      )
+        return;
+      cancelAnimationFrame(speechFrame.current);
+      speechSignal.current = false;
+      level.current = 0;
+      void speechContext.current?.close();
+      speechContext.current = null;
+      setState("error");
+      setError(
+        (error as Error).message ||
+          "Reprodução bloqueada. Clique em Ouvir e confira a permissão de áudio.",
+      );
+    }
+  }
+  async function pause() {
+    if (speechSignal.current && speechContext.current) {
+      const audio = speechContext.current,
+        version = utteranceVersion.current;
+      try {
+        await audio.suspend();
+        if (version !== utteranceVersion.current) return;
+        cancelAnimationFrame(speechFrame.current);
+        level.current = 0;
+        setState("paused");
+      } catch {
+        if (version === utteranceVersion.current)
+          setError("A reprodução terminou antes da pausa.");
+      }
+    } else if ("speechSynthesis" in window) speechSynthesis.pause();
+  }
+  async function resume() {
+    if (speechSignal.current && speechContext.current) {
+      const audio = speechContext.current,
+        version = utteranceVersion.current;
+      try {
+        await audio.resume();
+        if (version !== utteranceVersion.current) return;
+        speechTick.current?.();
+        setState("speaking");
+      } catch {
+        if (version === utteranceVersion.current)
+          setError("Não foi possível retomar este áudio.");
+      }
+    } else if ("speechSynthesis" in window) speechSynthesis.resume();
+  }
   useEffect(
     () => () => {
       generation.current++;
@@ -203,19 +335,26 @@ export function useAudio(
       stream.current?.getTracks().forEach((t) => t.stop());
       cancelAnimationFrame(frame.current);
       void ctx.current?.close();
+      utteranceVersion.current++;
+      speechAbort.current?.abort();
+      cancelAnimationFrame(speechFrame.current);
+      speechSource.current?.stop();
+      void speechContext.current?.close();
+      level.current = 0;
       if ("speechSynthesis" in window) speechSynthesis.cancel();
     },
     [],
   );
   return {
     level,
+    speechSignal,
     listening,
     voices,
     startMic,
     stopMic,
     speak,
     stopSpeech,
-    pause: () => speechSynthesis.pause(),
-    resume: () => speechSynthesis.resume(),
+    pause,
+    resume,
   };
 }

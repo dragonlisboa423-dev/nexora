@@ -56,3 +56,7 @@ Cada etapa deve manter o aplicativo utilizável e receber commit próprio. Migra
 Importador/422 e revisão administrativa do Core foram corrigidos no commit `359ec4a`. A base offline agora dispõe de cofre IndexedDB opcional criptografado, leitura/edição de memórias e lembretes, documentos guardados seletivamente, configurações para consulta, fila idempotente e conflitos/exclusões com revisão. Os critérios relativos a estes tipos foram exercitados em Chromium com rede desligada e dois dispositivos lógicos. A consulta semântica, o modelo local e as futuras abas continuam fora desse alcance.
 
 As consultas oficiais ao modelo Cloudflare e à ficha Kokoro foram tentadas com TLS/proxy herdados. O sandbox não alcançava o proxy; a tentativa fora dele recebeu **CONNECT 403 da política de rede** para `developers.cloudflare.com` e `huggingface.co`. Não se concluiu que o serviço ou a licença sejam inválidos; o bloqueio é de acesso neste ambiente. Pesos não foram baixados, preço/franquia não foram certificados e nenhum serviço de geração foi chamado.
+
+## Progresso comprovado · fase 2 parcial
+
+Motor eSpeak NG real, pt-BR com variante feminina `f3`, foi verificado por pacotes oficiais/licenças e integrado como síntese independente. WAV, reprodução, pausa/parada, seleção e amplitude do núcleo passaram em API/Chromium. A voz é artificial por formantes: não satisfaz ainda o requisito de naturalidade neural. Kokoro/Piper, instalação no aparelho e áudio físico permanecem pendentes. Microfone e vozes do navegador foram preservados; não existe escuta permanente disfarçada.

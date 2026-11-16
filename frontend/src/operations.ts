@@ -40,6 +40,7 @@ const priority: SalyState[] = [
   "offline",
   "listening",
   "speaking",
+  "synthesizing",
   "paused",
   "executing_tool",
   "searching",

@@ -8,6 +8,8 @@ A aplicação e suas ferramentas locais foram implementadas e testadas. Inferên
 
 A etapa Core integra o JSON ao modelo, verificadores com unidades e evidências por resposta. O prompt mestre completo foi recebido e está em [CODEX_INTEGRATION_PROMPT.md](docs/CODEX_INTEGRATION_PROMPT.md); a evolução segue a [auditoria e fases](docs/SALY_IMPLEMENTATION_AUDIT.md). Há revisão administrativa do Core e importação de memórias com prévia/erros por campo. Em **Configurações → Privacidade**, o cofre local opcional permite dados privados criptografados e sincronização de memórias/lembretes, além de documentos escolhidos para leitura. Consulte [Android e offline atuais](docs/INSTALAR_SALY_ANDROID.md) e o [relatório de testes](docs/SALY_TEST_REPORT.md). O pacote modular ZIP ainda não foi recebido.
 
+Há também síntese independente opcional com eSpeak NG instalado no servidor, catálogo, WAV e amplitude real no núcleo. É uma voz artificial por formantes; a voz neural natural solicitada ainda está pendente. Consulte [provedores de voz e configuração](docs/SALY_VOICE_PROVIDERS.md).
+
 ## Iniciar no Codespaces
 
 Abra o terminal do Codespaces e use o checkout existente:

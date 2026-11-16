@@ -24,3 +24,9 @@ Os testes TestClient foram executados fora do sandbox pela limitação já obser
 `scripts/browser_offline.py` passou em Chromium real: IndexedDB criptografado opt-in, download de original com bytes corretos sem rede, recarregamento e senha incorreta/correta, conflito entre dois clientes autenticados, criação offline/reenvio idempotente, propagação de exclusões, restauração validada com fila pausada e layout móvel. A primeira tentativa encontrou uma corrida ao restabelecer a rede antes de concluir a gravação local; a retomada foi corrigida e o fluxo completo passou. `scripts/browser_smoke.py` também passou, preservando os fluxos anteriores, sem erros de página. Nenhum provedor remoto foi chamado.
 
 O teste de navegador não comprova instalação física Android, armazenamento imune à limpeza do aparelho ou recursos não incluídos no cofre. O teste PostgreSQL permanece explicitamente não executado nesta rodada.
+
+## Fase 2 · voz independente e presença
+
+Dois testes de API de voz passaram com eSpeak NG real instalado em área do usuário. Build TypeScript/Vite passou. `scripts/browser_voice.py` passou: download de WAV real, `AudioContext`, pausa/retomada/parada, seleção persistente e núcleo dirigido pela amplitude PCM. Houve somente transporte de linguagem controlado para testar o botão Ouvir; a síntese foi real e nenhuma API de LLM foi chamada. A forma de onda desapareceu na pausa/parada; não houve erros de página.
+
+A execução inicial dos testes ficou bloqueada por falha de aprovação automática por limite de uso, sem conclusão sobre segurança; após a retomada, a aprovação ocorreu e os testes foram executados. Nenhuma compra de créditos ou serviço foi realizada. Voz neural natural/exclusiva, Kokoro/Piper e dispositivo físico continuam não certificados; ver `SALY_VOICE_PROVIDERS.md`.

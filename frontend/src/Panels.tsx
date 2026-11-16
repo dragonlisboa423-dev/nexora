@@ -3,6 +3,8 @@ import { Laboratory } from "./Laboratory";
 import { MemoryImport } from "./MemoryImport";
 import { CoreImport } from "./CoreImport";
 import { OfflinePanel } from "./offline/OfflinePanel";
+import { ServerVoices } from "./ServerVoices";
+import type { SalyState } from "./api";
 import { useEffect, useState } from "react";
 import { api, post, put, download, type Prefs } from "./api";
 export function Memories({ notify }: { notify: (s: string) => void }) {
@@ -550,11 +552,21 @@ export function Voices({
   save,
   voices,
   speak,
+  preview,
+  stop,
+  pause,
+  resume,
+  speechState,
 }: {
   prefs: Prefs;
   save: (p: Prefs) => Promise<void>;
   voices: SpeechSynthesisVoice[];
   speak: (s: string) => void;
+  preview: (uri: string, text: string) => void;
+  stop: () => void;
+  pause: () => void;
+  resume: () => void;
+  speechState: SalyState;
 }) {
   const [profile, setProfile] = useState("");
   const v = prefs.voice;
@@ -565,7 +577,16 @@ export function Voices({
       <PageTitle
         eyebrow="IDENTIDADE VOCAL"
         title="Uma voz para Saly"
-        text="Vozes reais fornecidas pelo seu navegador e sistema. Disponibilidade, gênero e processamento local variam conforme o dispositivo."
+        text="Catálogo do navegador e motores independentes configurados no servidor. A disponibilidade real e a licença de cada voz são informadas."
+      />
+      <ServerVoices
+        prefs={prefs}
+        save={save}
+        preview={preview}
+        stop={stop}
+        pause={pause}
+        resume={resume}
+        speechState={speechState}
       />
       <div className="card">
         <label>
@@ -575,6 +596,11 @@ export function Voices({
             onChange={(e) => change("voiceURI", e.target.value)}
           >
             <option value="">Preferir português brasileiro disponível</option>
+            {v.voiceURI === "saly-espeak:pt-br-f3" && (
+              <option value="saly-espeak:pt-br-f3">
+                eSpeak NG · pt-BR · variante feminina f3
+              </option>
+            )}
             {[...voices]
               .sort(
                 (a, b) =>
@@ -622,7 +648,7 @@ export function Voices({
           Ler respostas automaticamente
         </label>
         <button
-          disabled={!voices.length}
+          disabled={!voices.length && v.voiceURI !== "saly-espeak:pt-br-f3"}
           onClick={() =>
             speak("Olá. Sou Saly. Esta é uma amostra da voz selecionada.")
           }

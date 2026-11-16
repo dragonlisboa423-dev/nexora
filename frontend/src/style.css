@@ -925,7 +925,8 @@ main {
   transform: rotateY(25deg);
 }
 .flat-core.speaking {
-  animation: breathe 0.7s ease-in-out infinite;
+  animation: none;
+  transform: scale(calc(1 + var(--audio-energy, 0) * 0.15));
 }
 .skip {
   position: fixed;
@@ -1203,7 +1204,9 @@ main {
   inset: 10px;
   border-radius: 50%;
   border: 1px solid #9beddb33;
-  animation: speech-wave 1.8s ease-out infinite;
+  animation: none;
+  transform: scale(calc(1 + var(--audio-energy, 0) * 0.4));
+  opacity: var(--audio-energy, 0);
 }
 .speech-waves i:nth-child(2) {
   animation-delay: 0.6s;

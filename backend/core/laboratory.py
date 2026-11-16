@@ -191,7 +191,7 @@ def capabilities(provider, embeddings_configured):
             "id": "voice",
             "name": "Voz própria e áudio",
             "state": "partial",
-            "detail": "Vozes/reconhecimento do navegador existentes. Síntese independente e voz feminina própria ainda não implementadas; saída PCM não disponível.",
+            "detail": "Vozes/reconhecimento do navegador preservados. Adaptador eSpeak NG no servidor produz WAV/PCM e animação medida quando o motor está instalado. Voz por formantes é artificial; motor neural natural/exclusivo e funcionamento no aparelho seguem pendentes. Use a prévia para verificar este ambiente.",
         },
         {
             "id": "images",
