@@ -151,8 +151,11 @@ export default function OfflineWorkspace() {
     setEditing(null);
     setNotice("");
   }
-  async function saveLocal(next: VaultState) {
-    if (active.current) return;
+  async function saveLocal(next: VaultState, strict = false) {
+    if (active.current) {
+      if (strict) throw new Error("Aguarde a gravação atual do cofre.");
+      return;
+    }
     active.current = true;
     setBusy(true);
     setError("");
@@ -164,6 +167,7 @@ export default function OfflineWorkspace() {
       );
     } catch (error) {
       setError((error as Error).message);
+      if (strict) throw error;
     } finally {
       active.current = false;
       setBusy(false);
@@ -227,6 +231,22 @@ export default function OfflineWorkspace() {
       )
     : [];
   const conflicts = state ? Object.entries(state.conflicts) : [];
+  const bookDrafts = Object.entries(state?.books ?? {})
+    .filter(([, book]) => book.dirty || book.pendingNotes.length)
+    .map(([id, book]) => ({
+      bookId: id,
+      title: book.book.title,
+      progress: book.dirty ? book.progress : null,
+      notes: book.pendingNotes,
+    }));
+  const bookPending = bookDrafts.reduce(
+    (sum, book) => sum + Number(Boolean(book.progress)) + book.notes.length,
+    0,
+  );
+  const bookConflicts = Object.values(state?.books ?? {}).filter(
+    (book) => book.remoteConflict,
+  ).length;
+
   return (
     <div className="app">
       <aside className={menu ? "sidebar open" : "sidebar"}>
@@ -444,8 +464,8 @@ export default function OfflineWorkspace() {
             <>
               <div className="toolbar">
                 <span>
-                  {state.pending.length} alterações pendentes ·{" "}
-                  {conflicts.length} conflitos
+                  {state.pending.length + bookPending} alterações pendentes ·{" "}
+                  {conflicts.length + bookConflicts} conflitos
                 </span>
                 <button
                   disabled={busy || !online || state.paused}
@@ -466,12 +486,15 @@ export default function OfflineWorkspace() {
                   </p>
                   <pre className="tool-result">
                     {JSON.stringify(
-                      state.pending.map((item) => ({
-                        entity: item.entity_type,
-                        target: item.entity_id,
-                        action: item.action,
-                        payload: item.payload,
-                      })),
+                      {
+                        operations: state.pending.map((item) => ({
+                          entity: item.entity_type,
+                          target: item.entity_id,
+                          action: item.action,
+                          payload: item.payload,
+                        })),
+                        bookDrafts,
+                      },
                       null,
                       2,
                     )}
@@ -904,7 +927,7 @@ export default function OfflineWorkspace() {
               {tab === "books" && (
                 <OfflineLibrary
                   state={state}
-                  save={saveLocal}
+                  save={(value) => saveLocal(value, true)}
                   exclusive={exclusive}
                   busy={busy}
                   online={online}
@@ -914,7 +937,7 @@ export default function OfflineWorkspace() {
               {tab === "personal" && (
                 <PersonalOffline
                   state={state}
-                  save={saveLocal}
+                  save={(value) => saveLocal(value, true)}
                   busy={busy}
                   online={online}
                   fail={setError}
@@ -961,7 +984,7 @@ export default function OfflineWorkspace() {
                     onClick={async () => {
                       if (
                         !confirm(
-                          `Remover apenas este cofre local, incluindo ${state.pending.length} alterações ainda pendentes? Exporte um backup antes. O servidor não será apagado.`,
+                          `Remover apenas este cofre local, incluindo ${state.pending.length + bookPending} alterações ainda pendentes? Exporte um backup antes. O servidor não será apagado.`,
                         )
                       )
                         return;

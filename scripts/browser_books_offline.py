@@ -3,6 +3,7 @@
 import io
 import json
 import os
+from pathlib import Path
 
 from browser_support import PASSWORD, test_server
 from PIL import Image
@@ -114,9 +115,45 @@ with test_server(port=8009) as base, sync_playwright() as playwright:
     page.get_by_label("Anotação local do livro", exact=True).fill(
         "Nota do livro criada sem rede E2E"
     )
+    page.evaluate("""() => {
+      const put=IDBObjectStore.prototype.put;let once=true;
+      IDBObjectStore.prototype.put=function(...args){const request=put.apply(this,args);if(once&&this.name==='vault'&&args[0]?.id==='encrypted'){once=false;this.transaction.abort();}return request;};
+    }""")
+    page.once("dialog", lambda d: d.accept())
+    page.get_by_role("button", name="Guardar anotação local", exact=True).click()
+    page.get_by_role("alert").wait_for()
+    expect(page.get_by_label("Anotação local do livro", exact=True)).to_have_value(
+        "Nota do livro criada sem rede E2E"
+    )
     page.once("dialog", lambda d: d.accept())
     page.get_by_role("button", name="Guardar anotação local", exact=True).click()
     page.get_by_text("Nota do livro criada sem rede E2E", exact=True).wait_for()
+    page.get_by_text("2 alterações pendentes · 0 conflitos", exact=True).wait_for()
+    page.get_by_role("link", name="Cofre e sincronização", exact=True).click()
+    with page.expect_download() as exported:
+        page.get_by_role("button", name="Exportar backup criptografado", exact=True).click()
+    backup = Path(exported.value.path()).read_bytes()
+    page.get_by_role("button", name="Bloquear cofre", exact=True).click()
+    page.get_by_label("Selecionar backup criptografado", exact=False).set_input_files(
+        {"name": "cofre.json", "mimeType": "application/json", "buffer": backup}
+    )
+    page.get_by_label("Senha do cofre", exact=True).fill("private-offline-books-123")
+    page.once("dialog", lambda d: d.accept())
+    page.get_by_role("button", name="Validar e restaurar backup", exact=True).click()
+    page.get_by_role("status").filter(has_text="Backup validado e restaurado").wait_for()
+    page.get_by_label("Senha do cofre", exact=True).fill("private-offline-books-123")
+    page.get_by_role("button", name="Desbloquear cofre", exact=True).click()
+    review = page.get_by_role("heading", name="Revisão após restauração", exact=True).locator("..")
+    expect(review).to_contain_text("Nota do livro criada sem rede E2E")
+    expect(review).to_contain_text("bookDrafts")
+    expect(page.get_by_role("button", name="Sincronizar agora", exact=True)).to_be_disabled()
+    page.once("dialog", lambda d: d.accept())
+    page.get_by_role("button", name="Autorizar fila revisada", exact=True).click()
+    page.get_by_role("heading", name="Revisão após restauração", exact=True).wait_for(
+        state="hidden"
+    )
+    page.get_by_role("link", name="Livros guardados", exact=True).click()
+    page.get_by_label("Livro local", exact=True).select_option(key)
     other = browser.new_context()
     assert other.request.post(base + "/api/auth/login", data={"password": PASSWORD}).ok
     remote = other.request.put(
@@ -178,6 +215,8 @@ with test_server(port=8009) as base, sync_playwright() as playwright:
                     "encrypted selective book/image download/checksum",
                     "offline reload/decrypt/blob image",
                     "offline completion and annotation",
+                    "controlled storage abort preserves typed note",
+                    "restored book outbox visible and paused until authorization",
                     "explicit two-device conflict",
                     "idempotent annotation sync",
                     "remote deletion propagation",

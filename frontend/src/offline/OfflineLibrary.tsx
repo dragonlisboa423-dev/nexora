@@ -54,13 +54,20 @@ export default function OfflineLibrary({
       Object.values(mapping).forEach(URL.revokeObjectURL);
     };
   }, [selected, assetSignature]);
-  function update(change: (book: OfflineBook) => void) {
+  async function update(change: (book: OfflineBook) => void) {
     const next = structuredClone(state);
     const local = next.books?.[selected];
     if (local) {
       change(local);
-      void save(next);
+      try {
+        await save(next);
+        return true;
+      } catch (error) {
+        fail((error as Error).message);
+        return false;
+      }
     }
+    return false;
   }
   const localAsk = () =>
     fail(
@@ -186,8 +193,9 @@ export default function OfflineLibrary({
                   return;
                 const next = structuredClone(state);
                 delete next.books![selected];
-                void save(next);
-                setSelected("");
+                void save(next)
+                  .then(() => setSelected(""))
+                  .catch((error) => fail(error.message));
               }}
             >
               Remover livro deste cofre
@@ -351,7 +359,7 @@ export default function OfflineLibrary({
                 concluída(s).
               </p>
               <form
-                onSubmit={(e) => {
+                onSubmit={async (e) => {
                   e.preventDefault();
                   if (
                     !confirm(
@@ -359,19 +367,20 @@ export default function OfflineLibrary({
                     )
                   )
                     return;
-                  update((b) => {
+                  const saved = await update((b) => {
                     b.pendingNotes.push({
                       client_operation_id: crypto.randomUUID(),
                       page_id: page.id,
                       note,
                     });
                   });
-                  setNote("");
+                  if (saved) setNote("");
                 }}
               >
                 <label>
                   Anotação local do livro
                   <textarea
+                    aria-label="Anotação local do livro"
                     required
                     maxLength={5000}
                     value={note}

@@ -405,7 +405,7 @@ export default function PersonalOffline({
               next.enabledKinds = [...base];
               delete next.personalBudgets;
               for (const k of extras) delete next.entities[k];
-              await save(next);
+              await save(next).catch((error) => fail(error.message));
             }}
           >
             Remover cópia local de Compras e Espaço
