@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import PersonalOffline from "./PersonalOffline";
 import { Menu, LockKeyhole } from "lucide-react";
 import { api, download } from "../api";
 import { initialState, queueEdit, resolveConflict, synchronize } from "./sync";
@@ -160,6 +161,34 @@ export default function OfflineWorkspace() {
     if (navigator.onLine && stateRef.current && !stateRef.current.paused)
       void sync();
   }
+  async function enablePersonal() {
+    if (active.current || !stateRef.current) return;
+    active.current = true;
+    setBusy(true);
+    try {
+      const [snapshot, personal] = await Promise.all([
+        api("/sync/bootstrap?kinds=purchases,drawers,links"),
+        api("/personal-export"),
+      ]);
+      const current = stateRef.current;
+      await persist({
+        ...current,
+        enabledKinds: [
+          "memories",
+          "reminders",
+          "documents",
+          "purchases",
+          "drawers",
+          "links",
+        ],
+        entities: { ...current.entities, ...snapshot.entities },
+        personalBudgets: personal.budgets,
+      });
+    } finally {
+      active.current = false;
+      setBusy(false);
+    }
+  }
   const filtered = state
     ? state.entities[
         tab === "reminders"
@@ -191,6 +220,7 @@ export default function OfflineWorkspace() {
             ["memories", "Memórias locais"],
             ["reminders", "Agenda local"],
             ["documents", "Documentos guardados"],
+            ["personal", "Compras e Espaço locais"],
             ["settings", "Cofre e sincronização"],
           ].map(([id, label]) => (
             <a
@@ -834,6 +864,16 @@ export default function OfflineWorkspace() {
                     </article>
                   ))}
                 </>
+              )}
+              {tab === "personal" && (
+                <PersonalOffline
+                  state={state}
+                  save={saveLocal}
+                  busy={busy}
+                  online={online}
+                  fail={setError}
+                  enable={enablePersonal}
+                />
               )}
               {tab === "settings" && (
                 <section className="card">

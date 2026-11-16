@@ -10,11 +10,19 @@ from sqlalchemy import func, insert, select
 
 from . import storage as store
 from .agent.registry import Reminder, completed_reminder
+from .personal import delete_personal, save_personal
 from .security import owner, throttle
 from .services import Memory, memory_delete, memory_save
 
 router = APIRouter(prefix="/api/sync", tags=["private-sync"])
-WRITABLE = {"memories", "reminders"}
+WRITABLE = {"memories", "reminders", "purchases", "drawers", "links"}
+
+
+def selected_kinds(kinds):
+    selected = set(kinds.split(",")) if kinds else store.BASE_SYNC_KINDS
+    if not selected or not selected <= store.SYNC_KINDS:
+        raise HTTPException(422, "Tipos de sincronização inválidos")
+    return selected
 
 
 def safe_record(kind, record):
@@ -31,7 +39,8 @@ def cursor(connection):
 
 
 @router.get("/bootstrap")
-def bootstrap(_=Depends(owner)):
+def bootstrap(kinds: str | None = None, _=Depends(owner)):
+    selected = selected_kinds(kinds)
     with store.db() as connection:
         # Capture before reading data: any concurrent update is replayed on the next pull.
         start = cursor(connection)
@@ -40,7 +49,7 @@ def bootstrap(_=Depends(owner)):
                 safe_record(kind, store.pack(row))
                 for row in connection.execute(select(store.tables[kind])).all()
             ]
-            for kind in store.SYNC_KINDS
+            for kind in selected
         }
     return {
         "schema_version": 1,
@@ -51,7 +60,8 @@ def bootstrap(_=Depends(owner)):
 
 
 @router.get("/pull")
-def pull(after: int = Query(default=0, ge=0), _=Depends(owner)):
+def pull(after: int = Query(default=0, ge=0), kinds: str | None = None, _=Depends(owner)):
+    selected = selected_kinds(kinds)
     with store.db() as connection:
         maximum = cursor(connection)
         if after > maximum:
@@ -62,7 +72,7 @@ def pull(after: int = Query(default=0, ge=0), _=Depends(owner)):
         changes = (
             connection.execute(
                 select(store.sync_changes)
-                .where(store.sync_changes.c.cursor > after)
+                .where(store.sync_changes.c.cursor > after, store.sync_changes.c.kind.in_(selected))
                 .order_by(store.sync_changes.c.cursor)
                 .limit(200)
             )
@@ -80,7 +90,7 @@ def pull(after: int = Query(default=0, ge=0), _=Depends(owner)):
             result.append({**dict(change), "record": current, "deleted": current is None})
     return {
         "changes": result,
-        "cursor": changes[-1]["cursor"] if changes else after,
+        "cursor": changes[-1]["cursor"] if changes else maximum,
         "has_more": bool(changes and changes[-1]["cursor"] < maximum),
     }
 
@@ -88,7 +98,7 @@ def pull(after: int = Query(default=0, ge=0), _=Depends(owner)):
 class Operation(BaseModel):
     model_config = ConfigDict(extra="forbid")
     id: str = Field(pattern=r"^[a-fA-F0-9-]{36}$")
-    entity_type: Literal["memories", "reminders"]
+    entity_type: Literal["memories", "reminders", "purchases", "drawers", "links"]
     entity_id: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
     action: Literal["upsert", "delete"]
     base_revision: int = Field(ge=0, strict=True)
@@ -160,7 +170,7 @@ def apply(operation):
                 "detail": "Registro mudou ou foi excluído. Revise as duas versões; nenhuma sobrescrita automática.",
             }
         if (
-            operation.action == "delete" or operation.entity_type == "reminders"
+            operation.action == "delete" or operation.entity_type != "memories"
         ) and not operation.confirmed:
             return {
                 "id": operation.id,
@@ -171,19 +181,29 @@ def apply(operation):
             if current:
                 if operation.entity_type == "memories":
                     memory_delete(operation.entity_id)
-                else:
+                elif operation.entity_type == "reminders":
                     store.remove("reminders", operation.entity_id)
+                else:
+                    delete_personal(operation.entity_type, operation.entity_id, revision)
         elif operation.entity_type == "memories":
             memory_save(
                 Memory.model_validate(operation.payload),
                 operation.entity_id,
                 create=current is None,
             )
-        else:
+        elif operation.entity_type == "reminders":
             value = completed_reminder(
                 Reminder.model_validate(operation.payload).model_dump(), current
             )
             store.save("reminders", value, operation.entity_id)
+        else:
+            save_personal(
+                operation.entity_type,
+                operation.payload,
+                operation.entity_id,
+                revision,
+                create=current is None,
+            )
         current, revision = current_state(operation, connection)
         connection.execute(
             insert(store.sync_receipts).values(

@@ -70,6 +70,10 @@ for name in [
     "calendar_events",
     "alarms",
     "alarm_occurrences",
+    "purchases",
+    "drawers",
+    "links",
+    "private_assets",
 ]:
     tables[name] = Table(
         name,
@@ -83,6 +87,12 @@ originals = Table(
     "document_originals",
     metadata,
     Column("id", String, ForeignKey("documents.id", ondelete="CASCADE"), primary_key=True),
+    Column("content", LargeBinary, nullable=False),
+)
+asset_contents = Table(
+    "private_asset_contents",
+    metadata,
+    Column("id", String, ForeignKey("private_assets.id", ondelete="CASCADE"), primary_key=True),
     Column("content", LargeBinary, nullable=False),
 )
 chunks = Table(
@@ -109,7 +119,8 @@ memory_vectors = Table(
     Column("embedding", Vector(384).with_variant(JSON, "sqlite"), nullable=False),
     Column("embedding_version", String, nullable=False),
 )
-SYNC_KINDS = {"memories", "reminders", "documents"}
+BASE_SYNC_KINDS = {"memories", "reminders", "documents"}
+SYNC_KINDS = BASE_SYNC_KINDS | {"purchases", "drawers", "links"}
 VERSIONED_KINDS = {"calendar_events", "alarms"}
 sync_changes = Table(
     "sync_changes",

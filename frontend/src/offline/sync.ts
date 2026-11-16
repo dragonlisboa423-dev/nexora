@@ -1,6 +1,7 @@
 import { api } from "../api";
 import type {
   Kind,
+  WritableKind,
   Operation,
   RecordData,
   SyncResult,
@@ -30,13 +31,15 @@ function replaceRecord(
   id: string,
   record: RecordData | null,
 ) {
-  state.entities[kind] = state.entities[kind].filter((item) => item.id !== id);
-  if (record) state.entities[kind].push(record);
+  state.entities[kind] = (state.entities[kind] ?? []).filter(
+    (item) => item.id !== id,
+  );
+  if (record) state.entities[kind]!.push(record);
   if (kind === "documents" && !record) delete state.documents[id];
 }
 export function queueEdit(
   state: VaultState,
-  kind: "memories" | "reminders",
+  kind: WritableKind,
   id: string,
   payload: Record<string, unknown>,
   action: "upsert" | "delete",
@@ -50,7 +53,9 @@ export function queueEdit(
     throw new Error(
       "Esta alteração já foi enviada ou está em conflito. Sincronize ou revise o conflito antes de editar novamente.",
     );
-  const current = next.entities[kind].find((record) => record.id === id);
+  const current = (next.entities[kind] ?? []).find(
+    (record) => record.id === id,
+  );
   const operation: Operation = {
     id: previous?.id ?? crypto.randomUUID(),
     entity_type: kind,
@@ -156,7 +161,10 @@ export async function synchronize(
     next = await persist(next);
   }
   for (let page = 0; page < 20; page++) {
-    const response = await api(`/sync/pull?after=${next.cursor}`, { signal });
+    const response = await api(
+      `/sync/pull?after=${next.cursor}&kinds=${(next.enabledKinds ?? ["memories", "reminders", "documents"]).join(",")}`,
+      { signal },
+    );
     for (const change of response.changes as {
       kind: Kind;
       entity_id: string;

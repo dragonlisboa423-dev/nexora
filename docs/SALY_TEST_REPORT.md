@@ -34,3 +34,9 @@ A execução inicial dos testes ficou bloqueada por falha de aprovação automá
 ## Fase 3 · agenda e alarmes
 
 Em 2026-11-16, `bash scripts/test.sh` passou: **114 Python, 1 PostgreSQL pulado por DSN ausente, 9 Vitest e build**. Ruff passou. Os sete testes de planejamento cobrem recorrência/DST, conflitos, revisões, aprovação, dois alarmes associados reagendados, deduplicação, claim/adiamento/conclusão e reinício em processos separados. `browser_planning.py` passou com agendador real observado, Notification solicitado, recarga sem repetição e layout móvel. `browser_smoke.py` passou preservando os fluxos anteriores, sem erros de página. Nenhum provedor remoto foi chamado. Não foram comprovados Push, entrega física do SO, Android físico ou execução com navegador fechado.
+
+## Fase 4 · Compras e Espaço
+
+Seis testes novos de domínio passaram, incluindo valores em centavos, orçamento, parcelas, revisão, imagem real normalizada/privada, exclusão, alertas, esquemas de URL, importação atômica e sincronização opt-in/cascatas. Onze testes combinados de domínio/sincronização passaram. `browser_personal.py` passou com comprovante real, acesso anônimo negado, edição, gavetas, favoritos, busca, responsividade, cópia financeira autorizada, criação/recarga offline e envio ao reconectar. A primeira rodada detectou nome acessível incompleto em seletor; corrigido e reexecutado. Nenhuma API externa foi chamada.
+
+Regressão após a fase 4: **120 testes Python passaram, 1 PostgreSQL pulado por DSN ausente, 9 Vitest e build passaram**.

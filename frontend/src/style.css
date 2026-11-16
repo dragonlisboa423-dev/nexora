@@ -1453,3 +1453,67 @@ pre.tool-result,
     max-width: 80vw;
   }
 }
+
+.personal-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  gap: 18px;
+}
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 14px;
+}
+.receipt-preview {
+  display: block;
+  max-width: 100%;
+  max-height: 280px;
+  object-fit: contain;
+  margin: 16px 0;
+}
+.budget-bar {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0;
+}
+.budget-bar meter {
+  width: 100%;
+  height: 14px;
+  accent-color: var(--mint, #91dfcd);
+}
+.drawers {
+  display: grid;
+  gap: 18px;
+}
+.drawer {
+  border-top-width: 4px;
+}
+.drawer summary {
+  cursor: pointer;
+  font-size: 1.2rem;
+  padding: 12px 0;
+}
+.link-card {
+  padding: 18px;
+  border: 1px solid #284850;
+  border-radius: 12px;
+  overflow-wrap: anywhere;
+}
+.url-text {
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+.stats {
+  display: flex;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+details > summary {
+  cursor: pointer;
+}
+.toolbar label {
+  min-width: 0;
+}
+.toolbar input {
+  max-width: 100%;
+}

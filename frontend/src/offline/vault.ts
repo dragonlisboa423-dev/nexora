@@ -1,5 +1,8 @@
 /** Opt-in encrypted IndexedDB. The unlock key and provider secrets are never persisted. */
-export type Kind = "memories" | "reminders" | "documents";
+export type BaseKind = "memories" | "reminders" | "documents";
+export type PersonalKind = "purchases" | "drawers" | "links";
+export type Kind = BaseKind | PersonalKind;
+export type WritableKind = Exclude<Kind, "documents">;
 export type RecordData = {
   id: string;
   revision: number;
@@ -7,7 +10,7 @@ export type RecordData = {
 };
 export type Operation = {
   id: string;
-  entity_type: "memories" | "reminders";
+  entity_type: WritableKind;
   entity_id: string;
   action: "upsert" | "delete";
   base_revision: number;
@@ -28,7 +31,10 @@ export type VaultState = {
   storageRevision: number;
   vaultSalt?: string;
   cursor: number;
-  entities: Record<Kind, RecordData[]>;
+  entities: Record<BaseKind, RecordData[]> &
+    Partial<Record<PersonalKind, RecordData[]>>;
+  enabledKinds?: Kind[];
+  personalBudgets?: Record<string, number>;
   preferences: Record<string, unknown>;
   pending: Operation[];
   conflicts: Record<string, SyncResult>;
@@ -118,7 +124,18 @@ function validateState(state: VaultState) {
     !state.conflicts
   )
     throw new Error("Schema do cofre incompatível.");
-  for (const kind of ["memories", "reminders", "documents"] as const) {
+  const supported = [
+    "memories",
+    "reminders",
+    "documents",
+    "purchases",
+    "drawers",
+    "links",
+  ];
+  if (state.enabledKinds?.some((kind) => !supported.includes(kind)))
+    throw new Error("Tipos locais incompatíveis.");
+  for (const kind of state.enabledKinds ??
+    (["memories", "reminders", "documents"] as Kind[])) {
     if (
       !Array.isArray(state.entities[kind]) ||
       state.entities[kind].some(

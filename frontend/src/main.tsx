@@ -12,6 +12,8 @@ import {
   AudioLines,
   Bell,
   Brain,
+  ShoppingBag,
+  Folder,
   ChevronLeft,
   ChevronRight,
   Database,
@@ -54,6 +56,12 @@ const PlanningPage = lazy(() =>
 );
 const AlarmsPage = lazy(() =>
   import("./Planning").then((module) => ({ default: module.AlarmsPage })),
+);
+const Purchases = lazy(() =>
+  import("./Personal").then((m) => ({ default: m.Purchases })),
+);
+const Space = lazy(() =>
+  import("./Personal").then((m) => ({ default: m.Space })),
 );
 import { AlarmNotifier } from "./AlarmNotifier";
 import { VerificationDetails, type Verification } from "./Laboratory";
@@ -405,6 +413,8 @@ function App() {
     ["/knowledge", "Centro Smolin", Database],
     ["/agenda", "Agenda", ActivityIcon],
     ["/alarms", "Alarmes", Bell],
+    ["/purchases", "Compras", ShoppingBag],
+    ["/space", "Espaço", Folder],
     ["/tools", "Ferramentas e integrações", ShieldCheck],
     ["/voices", "Biblioteca de vozes", AudioLines],
     ["/activity", "Atividades", ActivityIcon],
@@ -999,6 +1009,22 @@ function App() {
                     <AlarmsPage prefs={prefs} save={save} notify={setError} />
                   </Suspense>
                 )
+              }
+            />
+            <Route
+              path="/purchases"
+              element={
+                <Suspense fallback={<p>Carregando compras…</p>}>
+                  <Purchases notify={setError} />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/space"
+              element={
+                <Suspense fallback={<p>Carregando espaço…</p>}>
+                  <Space notify={setError} />
+                </Suspense>
               }
             />
             <Route path="/tools" element={<Tools notify={setError} />} />

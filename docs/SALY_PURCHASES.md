@@ -1,0 +1,9 @@
+# Compras manuais
+
+A aba Compras permite criar/editar/excluir produto, quantidade, loja, datas, categoria, frete, desconto, pagamento, parcelas, estado manual e observações. Preço, frete, desconto, total e orçamento são inteiros em centavos. A prévia calcula `preço × quantidade + frete − desconto`; descontos acima do subtotal são recusados. Realizadas, aguardando entrega e entregues entram nos gastos do mês da compra; desejos, planejadas e canceladas não entram. O resumo mostra orçamento, saldo, categorias em medidores e parcelas aritméticas com resto explícito. Não calcula juros nem vencimentos e não rastreia encomendas.
+
+Comprovantes PNG/JPEG/WebP estáticos têm limite de 8 MB/16 MP, validação por Pillow 13.0.0 (MIT-CMU, metadados oficiais PyPI consultados em 2026-11-16), orientação corrigida, redução até 2400×2400 e normalização PNG sem metadados. Arquivos são BLOBs em `private_asset_contents`, com SHA-256/metadados em `private_assets`, na mesma transação da compra. Substituição/exclusão usa revisão e remove o anexo anterior. Rotas exigem sessão e não permitem cache público. Não há OCR nem inferência automática de valores.
+
+Alertas opcionais para entrega, fim da garantia e devolução criam alarmes centrais às 09:00 no fuso escolhido, com dias de antecedência configuráveis. São cópias explícitas da data: ao editar a compra, revise também o alarme. Excluir a compra cancela seus alarmes e exclui o comprovante. Limites de entrega estão em `SALY_ALARMS_AND_AGENDA.md`.
+
+No Cofre local, autorize separadamente a cópia de Compras e Espaço. Registros podem ser criados/editados/excluídos sem rede e sincronizados por revisão, recibos e conflitos. Comprovantes e novos alarmes não são copiados nem criados offline. Orçamentos são fotografia para consulta, não sincronização editável. Exportação JSON contém registros/orçamento, sem binários. Para recuperação completa, faça backup privado do banco incluindo BLOBs.

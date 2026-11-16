@@ -26,6 +26,7 @@ from .imports import MemoryImport, validation_details
 from .llm.connection import verify_connection
 from .llm.provider import Provider, ProviderError
 from .memory import index_memory, search_memories
+from .personal import router as personal_router
 from .planning import router as planning_router
 from .planning import scheduler as alarm_scheduler
 from .security import COOKIE, owner, throttle, unlock
@@ -1059,6 +1060,7 @@ app.include_router(core_admin_router)
 app.include_router(sync_router)
 app.include_router(voices_router)
 app.include_router(planning_router)
+app.include_router(personal_router)
 
 DIST = Path(__file__).resolve().parents[1] / "frontend" / "dist"
 

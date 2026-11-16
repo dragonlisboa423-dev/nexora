@@ -22,3 +22,7 @@ O cofre limita o JSON a 30 MB e cada original escolhido a 10 MB, verificando SHA
 ## Agenda e alarmes
 
 Tabelas JSON aditivas `calendar_events`, `alarms`, `alarm_occurrences`; as duas primeiras têm revisão gerenciada pelo servidor. Elas não são acrescentadas silenciosamente ao protocolo offline existente, restrito a memórias/lembretes/documentos. Ocorrências usam IDs determinísticos e estado persistente, com lease/claim, apresentação relatada, adiamento e conclusão. Contêm metadados privados; exigem a mesma sessão de proprietária.
+
+## Compras e Espaço
+
+Tabelas `purchases`, `drawers`, `links` usam revisões e changelog. `private_assets` guarda metadados/SHA-256, `private_asset_contents` guarda bytes normalizados com FK e exclusão em cascata, na mesma transação do registro. Orçamentos ficam em `app_config.purchase_budgets`. O protocolo padrão continua retornando somente três tipos originais; novos clientes solicitam `kinds=purchases,drawers,links` após consentimento explícito no cofre. Clientes antigos pulam estes registros. Changelog não guarda o conteúdo financeiro.

@@ -64,3 +64,7 @@ Motor eSpeak NG real, pt-BR com variante feminina `f3`, foi verificado por pacot
 ## Progresso comprovado · fase 3
 
 Agenda com eventos/recorrência, prévia de conflitos e alarmes persistentes foi exercitada por API, reinício em processos separados e Chromium. Suíte: 114 Python, 1 PostgreSQL pulado, 9 Vitest e build; regressão visual passou. Avisos dependem de backend/interface ativos; Push e alarme nativo permanecem ausentes. Consulte `SALY_ALARMS_AND_AGENDA.md`.
+
+## Progresso comprovado · fase 4
+
+Compras manuais/orçamento em centavos, comprovantes normalizados privados e gavetas/links seguros foram exercitados por API/Chromium, incluindo edição offline opt-in e sincronização. Binários de comprovantes e novos alarmes não são replicados no cofre; orçamento local é consulta. Consulte `SALY_PURCHASES.md` e `SALY_SPACE_DRAWERS.md`.
