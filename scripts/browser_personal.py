@@ -88,6 +88,9 @@ with test_server(port=8005) as base, sync_playwright() as playwright:
             page.get_by_role("button", name="Alternar menu", exact=True).click()
             page.get_by_role("link", name=destination, exact=True).click()
         assert page.evaluate("document.documentElement.scrollWidth<=window.innerWidth"), destination
+        page.wait_for_function(
+            "document.querySelector('.sidebar').getBoundingClientRect().right <= 0.5"
+        )
         page.screenshot(path="/tmp/saly-" + destination.lower() + ".png", full_page=True)
     page.evaluate("navigator.serviceWorker.ready.then(()=>true)")
     page.goto(base + "/offline")

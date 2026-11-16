@@ -1734,3 +1734,21 @@ fieldset {
 .personal-grid > * {
   min-width: 0;
 }
+
+.sidebar {
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+.sidebar nav,
+.sidebar .brand,
+.sidebar-footer {
+  flex-shrink: 0;
+}
+
+.science-block fieldset label {
+  flex-direction: row;
+  align-items: flex-start;
+}
+.science-block input[type="radio"] {
+  flex-shrink: 0;
+}

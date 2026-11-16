@@ -803,9 +803,11 @@ export function SettingsPanel({
                 ? "Ao ativar explicitamente o microfone, aguardar a palavra Saly antes de transcrever para o campo"
                 : k === "remoteConsent"
                   ? "Autorizo envio ao provedor remoto e às integrações externas configuradas (mensagens, contexto e trechos autorizados)"
-                  : k === "useMemory"
-                    ? "Recuperar memórias autorizadas no chat"
-                    : "Recuperar trechos do Centro Smolin"}
+                  : k === "usePersonalTools"
+                    ? "Permitir ao agente consultar compras, orçamento, links e páginas de livros no chat (pode enviar esses dados ao modelo autorizado)"
+                    : k === "useMemory"
+                      ? "Recuperar memórias autorizadas no chat"
+                      : "Recuperar trechos do Centro Smolin"}
             </label>
           ))}
           <p>

@@ -322,6 +322,10 @@ def upload_image(key: str, base_revision: int, file: UploadFile = File(...), _=D
     asset_id = store.uid()
     with store.transaction() as connection:
         purchase = revision("purchases", key, base_revision)
+        try:
+            store.check_asset_capacity(len(content), purchase.get("image_id"))
+        except ValueError as error:
+            raise HTTPException(413, str(error)) from None
         store.save(
             "private_assets",
             {

@@ -23,6 +23,7 @@ from .core import core_status, policy_prompt, retrieve_principles
 from .core.admin import router as core_admin_router
 from .core.laboratory import run_laboratory
 from .core.policy import context_message
+from .feature_lab import run_feature_checks
 from .imports import MemoryImport, validation_details
 from .library import router as library_router
 from .llm.connection import verify_connection
@@ -70,7 +71,7 @@ async def lifespan(app):
             await asyncio.gather(*tuple(smolin.TASKS), return_exceptions=True)
 
 
-app = FastAPI(title="SALY Intelligence · Centro Smolin", version="0.4.0", lifespan=lifespan)
+app = FastAPI(title="SALY Intelligence · Centro Smolin", version="0.5.0", lifespan=lifespan)
 
 
 @app.exception_handler(RequestValidationError)
@@ -238,6 +239,7 @@ DEFAULT_SETTINGS = {
     "privacy": {
         "useMemory": True,
         "useKnowledge": True,
+        "usePersonalTools": False,
         "remoteConsent": False,
         "wakeWordEnabled": False,
     },
@@ -269,6 +271,7 @@ class Voice(VoiceProfile):
 class Privacy(BaseModel):
     useMemory: bool = True
     useKnowledge: bool = True
+    usePersonalTools: bool = False
     remoteConsent: bool = False
     wakeWordEnabled: bool = False
 
@@ -286,7 +289,12 @@ class Preferences(BaseModel):
 
 @app.get("/api/settings")
 def settings(_=Depends(owner)):
-    return store.setting("preferences", DEFAULT_SETTINGS)
+    saved = store.setting("preferences", DEFAULT_SETTINGS)
+    return {
+        **DEFAULT_SETTINGS,
+        **saved,
+        "privacy": {**DEFAULT_SETTINGS["privacy"], **saved.get("privacy", {})},
+    }
 
 
 @app.put("/api/settings")
@@ -294,8 +302,15 @@ def save_settings(body: Preferences, _=Depends(owner)):
     data = body.model_dump()
     if len(json.dumps(data)) > 20000:
         raise HTTPException(413, "Configuração grande demais")
-    store.set_setting("preferences", data)
-    store.audit("settings", "Preferências globais atualizadas")
+    with store.transaction():
+        previous = settings(True)["privacy"]
+        if any(
+            previous.get(key) and not data["privacy"].get(key)
+            for key in ("remoteConsent", "useMemory", "useKnowledge", "usePersonalTools")
+        ):
+            store.set_setting("context_epoch", store.setting("context_epoch", 0) + 1)
+        store.set_setting("preferences", data)
+        store.audit("settings", "Preferências globais atualizadas")
     return data
 
 
@@ -313,7 +328,17 @@ async def health(_=Depends(owner)):
             "included": True,
             "tools_available": sum(bool(availability(name)) for name in REGISTRY),
             "last_verification": getattr(provider, "last_probe", None),
-            "modules": ["chat", "memory", "smolin", "reminders", "tools"],
+            "modules": [
+                "chat",
+                "memory",
+                "smolin",
+                "reminders",
+                "calendar",
+                "alarms",
+                "personal_context_opt_in",
+                "library",
+                "tools",
+            ],
             "billing": "Nenhuma assinatura adicional do agente; uso sujeito à cota do provedor.",
         },
     }
@@ -916,7 +941,7 @@ async def run_tool(name: str, body: ToolRequest, _=Depends(owner)):
     try:
         if (
             name in REGISTRY
-            and REGISTRY[name][3]
+            and REGISTRY[name][3] in {"github", "search", "web"}
             and not settings(True)["privacy"].get("remoteConsent")
         ):
             raise HTTPException(412, "Autorize o envio à integração externa em Privacidade")
@@ -1005,7 +1030,11 @@ def update_item(key: str, body: Item, _=Depends(owner)):
 
 @app.get("/api/evaluation")
 def evaluations(_=Depends(owner)):
-    return [r for r in store.all_records("evaluations") if r.get("kind") != "core-lab-v1"]
+    return [
+        r
+        for r in store.all_records("evaluations")
+        if r.get("kind") not in {"core-lab-v1", "feature-lab-v1", "device-lab-v1"}
+    ]
 
 
 @app.get("/api/core")
@@ -1015,7 +1044,11 @@ def installed_core(_=Depends(owner)):
 
 @app.get("/api/laboratory")
 def laboratory_history(_=Depends(owner)):
-    return [r for r in store.all_records("evaluations") if r.get("kind") == "core-lab-v1"][:50]
+    return [
+        r
+        for r in store.all_records("evaluations")
+        if r.get("kind") in {"core-lab-v1", "feature-lab-v1", "device-lab-v1"}
+    ][:50]
 
 
 @app.post("/api/laboratory")
@@ -1023,6 +1056,61 @@ def laboratory_run(_=Depends(owner)):
     throttle("laboratory", 5)
     report = run_laboratory(provider, smolin.embedding_provider.configured, app.version)
     return store.save("evaluations", report)
+
+
+@app.post("/api/laboratory/features")
+async def feature_laboratory(_=Depends(owner)):
+    throttle("feature-laboratory", 3)
+    report = await run_feature_checks(provider, smolin.embedding_provider.configured, app.version)
+    return store.save("evaluations", report)
+
+
+class DeviceProbe(BaseModel):
+    id: str = Field(pattern=r"^(audio|indexeddb|cache)$")
+    category: str = Field(max_length=100)
+    status: str = Field(pattern=r"^(passed|failed|inconclusive)$")
+    duration_ms: float = Field(ge=0, le=60000, allow_inf_nan=False)
+    detail: str = Field(max_length=1500)
+    observed: dict = Field(max_length=20)
+
+
+class DeviceChecks(BaseModel):
+    results: list[DeviceProbe] = Field(min_length=1, max_length=3)
+
+
+@app.post("/api/laboratory/device")
+def device_laboratory(body: DeviceChecks, _=Depends(owner)):
+    from collections import Counter
+
+    throttle("device-laboratory", 5)
+    core = core_status()
+    results = [
+        {
+            **case.model_dump(),
+            "input": "Probe acionado no navegador",
+            "expected": "Execução local observada",
+            "evidence": case.detail,
+        }
+        for case in body.results
+    ]
+    return store.save(
+        "evaluations",
+        {
+            "kind": "device-lab-v1",
+            "timestamp": store.now(),
+            "app_version": app.version,
+            "rules_version": core["schema_version"],
+            "core_sha256": core["sha256"],
+            "model_version": provider.model,
+            "model_tested": False,
+            "provider_requests": 0,
+            "duration_ms": sum(c.duration_ms for c in body.results),
+            "summary": dict(Counter(c.status for c in body.results)),
+            "results": results,
+            "capabilities": [],
+            "scope": "Resultados relatados pelo navegador que acionou o teste. Não certificam hardware físico, Android, instalação permanente ou motor de IA.",
+        },
+    )
 
 
 @app.post("/api/evaluation")

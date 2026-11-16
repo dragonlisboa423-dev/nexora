@@ -52,3 +52,43 @@ Quatro testes de Biblioteca passaram, incluindo rascunho original/idempotência/
 ## Fase 7 · Estúdio
 
 Oito testes Python de mídia passaram, com FFmpeg/FFprobe reais, arquivo MP4, legendas/fade, corte, duas trilhas de áudio, cancelamento em execução e histórico. O adaptador Cloudflare foi testado somente com transporte controlado, incluindo limite diário; não houve inferência externa. `browser_studio.py` passou com download/checksum e reprodução MP4 nativa (`currentTime > 0`), recarga e layout móvel. Fontes oficiais Cloudflare foram recuperadas pelo espelho do próprio fornecedor no GitHub; conta/token/termos BFL e geração real permanecem bloqueados.
+
+## Fase 8 · integração final de 2026-11-16
+
+**137 testes Python passaram, 1 PostgreSQL foi pulado por DSN de teste ausente; 12 Vitest, build TypeScript/Vite, Ruff e verificação de formatação passaram.** `git diff --check` passou. Os ícones foram abertos como PNG reais de 192×192 e 512×512; manifesto JSON válido. SHA-256 do prompt íntegro e da semente original permanecem os mesmos registrados na auditoria.
+
+Fluxos reais Chromium executados com dados/bancos descartáveis, sem chamadas a provedores de IA externos:
+
+| Script | Evidência |
+|---|---|
+| `browser_smoke.py` | Login único, núcleo WebGL/2D, microfone de teste, memória, Smolin, aprovação, calculadora, Core Lab, PWA/cache público e móvel preservados. Transporte do chat é controlado, não inferência real. |
+| `browser_offline.py` | Criptografia, original de documento sem rede, recarga/senha, dois dispositivos, fila, exclusão e restauração com envios pausados. |
+| `browser_voice.py` | WAV eSpeak real (226.836 bytes nesta execução), AudioContext, pausa/retomada/parada, seleção e amplitude do núcleo. Não comprova som físico/naturalidade. |
+| `browser_planning.py` | Eventos recorrentes, vistas, alarmes vinculados, scheduler real observado, Notification solicitada, recarga sem repetição, adiamento/conclusão e móvel. |
+| `browser_personal.py` | Compras/orçamento em centavos, comprovante privado, bloqueio anônimo, gavetas/links/favoritos, criação e recarga offline com envio ao reconectar, móvel. |
+| `browser_library.py` | Autoria de capítulos/páginas, publicação explícita, progresso/marcador/nota, pesquisa/última página, contexto preparado sem envio e móvel. |
+| `browser_biology.py` | Atividades reais de quiz, DNA/RNA, tipos celulares, cálculo/gráfico logístico e controles digitais do microscópio, sem alegar micrografia/calibração. |
+| `browser_studio.py` | Imagem privada/rotação, FFmpeg, legenda/fade, checksum do download, reprodução MP4 com `currentTime > 0`, histórico e móvel. |
+| `browser_books_offline.py` | Livro/imagem escolhidos, checksum/Blob offline, agenda/alarmes para consulta, progresso/notas, conflito explícito, reenvio sem duplicação, exclusão remota e probes reais de PCM/IndexedDB/cache. |
+
+Todos encerraram sem erros de página. A suíte também inclui teste de cancelamento de FFmpeg enquanto executava, duas faixas reais, permissão pessoal do agente/revogação de contexto, limite de mídia e notas idempotentes. Testar URL de ferramenta e contrato Cloudflare com transporte controlado **não certifica a inferência remota atual**.
+
+Comandos reproduzíveis, após instalar dependências de navegador e motores nativos apropriados:
+
+```bash
+bash scripts/test.sh
+.venv/bin/ruff check backend
+.venv/bin/python scripts/browser_smoke.py
+.venv/bin/python scripts/browser_offline.py
+.venv/bin/python scripts/browser_voice.py
+.venv/bin/python scripts/browser_planning.py
+.venv/bin/python scripts/browser_personal.py
+.venv/bin/python scripts/browser_library.py
+.venv/bin/python scripts/browser_biology.py
+.venv/bin/python scripts/browser_studio.py
+.venv/bin/python scripts/browser_books_offline.py
+```
+
+Avisos observados: depreciação do uso de httpx pelo TestClient Starlette e chunk Three.js acima de 500 kB (842,42 kB, gzip 223,68 kB). Three/núcleo e páginas novas são carregados sob demanda; não removemos a experiência visual para silenciar o aviso. Não foram certificados benchmark no Android físico, build APK/Docker atualizado ou operação permanente da hospedagem. PostgreSQL/pgvector real permanece não executado nesta rodada; a configuração de CI existente prevê banco descartável, mas seu resultado remoto não foi presumido.
+
+Bloqueios de aceitação preservados: geração externa de imagem, edição generativa, vídeo generativo, voz neural natural/exclusiva, inferência local, encoder semântico/OCR, Web Push/alarme nativo e revisão científica da edição. Consulte `SALY_IMPLEMENTATION_STATUS.md` para o alcance e instruções atuais, sem confundir todas as fases implementadas parcialmente com todos os critérios finais certificados.

@@ -149,13 +149,17 @@ export function BookBlocks({
   attempts,
   answer,
   science,
+  assetUrl,
 }: {
   page: BookPage;
   version: string;
   attempts: Record<string, number[]>;
   answer: (key: string, index: number) => void;
   science?: (block: Data) => React.ReactNode;
+  assetUrl?: (id: string) => string | undefined;
 }) {
+  const mediaUrl = (id: string) =>
+    assetUrl ? assetUrl(id) : `/api/private-assets/${id}`;
   return (
     <>
       {page.blocks.map((block, index) => {
@@ -187,13 +191,20 @@ export function BookBlocks({
               {block.text}
             </Markdown>
           );
+        if (
+          ["image", "audio", "video"].includes(block.type) &&
+          !mediaUrl(block.asset_id)
+        )
+          return (
+            <p key={key}>
+              Mídia não guardada neste dispositivo:{" "}
+              {block.alt ?? block.description}.
+            </p>
+          );
         if (block.type === "image")
           return (
             <figure key={key}>
-              <img
-                src={`/api/private-assets/${block.asset_id}`}
-                alt={block.alt}
-              />
+              <img src={mediaUrl(block.asset_id)} alt={block.alt} />
               <figcaption>{block.credit}</figcaption>
             </figure>
           );
@@ -201,17 +212,9 @@ export function BookBlocks({
           return (
             <figure key={key}>
               {block.type === "audio" ? (
-                <audio
-                  controls
-                  preload="none"
-                  src={`/api/private-assets/${block.asset_id}`}
-                />
+                <audio controls preload="none" src={mediaUrl(block.asset_id)} />
               ) : (
-                <video
-                  controls
-                  preload="none"
-                  src={`/api/private-assets/${block.asset_id}`}
-                />
+                <video controls preload="none" src={mediaUrl(block.asset_id)} />
               )}
               <figcaption>
                 {block.description} · {block.credit}
@@ -1020,7 +1023,7 @@ export default function Library({
             .filter((b) => b.type === "text")
             .map((b) => b.text)
             .join("\n")
-            .slice(0, 5000),
+            .slice(0, 3000),
         );
     }
   }
@@ -1396,7 +1399,7 @@ export default function Library({
                           .filter((b) => b.type === "text")
                           .map((b) => b.text)
                           .join("\n")
-                          .slice(0, 5000),
+                          .slice(0, 3000),
                       );
                   }}
                 >
@@ -1419,7 +1422,7 @@ export default function Library({
                 </label>
                 <small>
                   Voz e velocidade selecionadas na Biblioteca de vozes. Leitura
-                  de até 5.000 caracteres por acionamento; sem avanço
+                  de até 3.000 caracteres por acionamento; sem avanço
                   automático.
                 </small>
               </div>

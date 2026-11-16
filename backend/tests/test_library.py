@@ -192,3 +192,22 @@ def test_initial_biology_is_valid_original_draft_idempotent_and_not_resurrected(
     )
     ensure_biology_draft()
     assert not store.all_records("books")
+
+
+def test_offline_annotation_retry_is_idempotent_and_rejects_reused_operation(client):
+    import uuid
+
+    created = create(client)
+    path = "/api/books/" + created["id"] + "/annotations"
+    body = {
+        "page_id": "page1",
+        "note": "Nota criada offline",
+        "confirm": True,
+        "client_operation_id": str(uuid.uuid4()),
+    }
+    first = client.post(path, json=body)
+    second = client.post(path, json=body)
+    assert first.status_code == 200 and second.status_code == 200
+    assert first.json()["id"] == second.json()["id"]
+    assert len(client.get(path).json()) == 1
+    assert client.post(path, json={**body, "note": "Outro conteúdo"}).status_code == 409

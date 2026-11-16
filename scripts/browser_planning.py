@@ -106,6 +106,9 @@ with test_server(port=8004) as base, sync_playwright() as playwright:
     expect(notice).to_have_count(0)
     page.set_viewport_size({"width": 390, "height": 844})
     assert page.evaluate("document.documentElement.scrollWidth<=window.innerWidth")
+    page.wait_for_function(
+        "document.querySelector('.sidebar').getBoundingClientRect().right <= 0.5"
+    )
     page.screenshot(path="/tmp/saly-alarms-mobile.png", full_page=True)
     # Deleting an event really cancels the linked alarm.
     result = context.request.delete(

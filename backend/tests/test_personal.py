@@ -243,3 +243,38 @@ def test_optional_personal_sync_keeps_old_clients_private_and_cascades_tombstone
     ).json()["changes"]
     assert any(c["entity_id"] == link["id"] and c["deleted"] for c in changes)
     assert any(c["entity_id"] == drawer["id"] and c["deleted"] for c in changes)
+
+
+def test_agent_personal_read_tools_require_explicit_permission_and_never_publish_or_pay(client):
+    from backend.agent.registry import schemas
+
+    prefs = client.get("/api/settings").json()
+    assert not prefs["privacy"]["usePersonalTools"]
+    assert "list_purchases" not in [s["function"]["name"] for s in schemas()]
+    assert client.post("/api/tools/list_purchases", json={"arguments": {}}).status_code == 422
+    purchase_record = create(client, "purchases", purchase())
+    drawer = create(client, "drawers", {"name": "Leitura"})
+    create(
+        client,
+        "links",
+        {"title": "Referência", "url": "https://example.org", "drawer_id": drawer["id"]},
+    )
+    prefs["privacy"]["usePersonalTools"] = True
+    assert client.put("/api/settings", json=prefs).status_code == 200
+    result = client.post("/api/tools/list_purchases", json={"arguments": {"query": "Microscópio"}})
+    assert result.status_code == 200, result.text
+    assert result.json()["executed"] and result.json()["result"][0]["id"] == purchase_record["id"]
+    assert "image_id" not in result.json()["result"][0]
+    summary = client.post(
+        "/api/tools/purchase_summary", json={"arguments": {"month": "2026-11"}}
+    ).json()["result"]
+    assert summary["total_cents"] == 25589
+    links = client.post("/api/tools/list_saved_links", json={"arguments": {}}).json()["result"]
+    assert links[0]["url"] == "https://example.org"
+    assert client.post("/api/tools/publish_book", json={"arguments": {}}).status_code == 422
+    assert client.post("/api/tools/pay_purchase", json={"arguments": {}}).status_code == 422
+    before = store.setting("context_epoch", 0)
+    prefs["privacy"]["usePersonalTools"] = False
+    assert client.put("/api/settings", json=prefs).status_code == 200
+    assert store.setting("context_epoch") == before + 1
+    assert client.post("/api/tools/list_saved_links", json={"arguments": {}}).status_code == 422

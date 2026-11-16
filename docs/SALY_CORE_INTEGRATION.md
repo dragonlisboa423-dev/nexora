@@ -19,3 +19,7 @@ Em **Configurações → Sistema → Verificação administrativa do Core**, sel
 O backup tem download autenticado. A prévia expira em 15 minutos e só pode ser consumida uma vez. Uma configuração diferente pode ser inspecionada, mas sua migração fica bloqueada até revisão e distribuição do pacote/manifesto no repositório. Essa restrição é deliberada: o upload não permite instalar instruções arbitrárias ou conceder permissões às ferramentas.
 
 Rotas: `/api/memories-import/preview`, `/api/memories-import`, `/api/core/preview`, `/api/core/imports/{id}/confirm` e `/api/core/imports/{id}/backup`. Todas exigem sessão da proprietária. Backup JSON do Core não substitui backup do banco ou de `.env` privado.
+
+## Agente e módulos novos
+
+Consultas tipadas a compras/orçamento, gavetas/links e páginas de livros exigem `privacy.usePersonalTools`, desligado por padrão. A permissão permite uso desses dados no modelo remoto já autorizado; não lê comprovantes, visita URLs, efetua pagamentos ou publica livros. Tutoria por página também pode preparar um trecho no campo de mensagem mediante ação explícita, sem enviá-lo automaticamente. Dados editoriais não concedem privilégios. Revogar permissões de contexto incrementa a época para impedir reaproveitar automaticamente mensagens antigas em futuras inferências; a conversa visível e dados já transmitidos ao provedor não são apagados retroativamente.

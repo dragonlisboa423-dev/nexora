@@ -1,3 +1,4 @@
+import { validateBooks, type OfflineBook } from "./books";
 /** Opt-in encrypted IndexedDB. The unlock key and provider secrets are never persisted. */
 export type BaseKind = "memories" | "reminders" | "documents";
 export type PersonalKind = "purchases" | "drawers" | "links";
@@ -35,6 +36,30 @@ export type VaultState = {
     Partial<Record<PersonalKind, RecordData[]>>;
   enabledKinds?: Kind[];
   personalBudgets?: Record<string, number>;
+  books?: Record<string, OfflineBook>;
+  planning?: {
+    events: {
+      id: string;
+      title: string;
+      start_at: string;
+      end_at: string;
+      timezone: string;
+      description: string;
+      status: string;
+      recurrence_rule?: string | null;
+    }[];
+    alarms: {
+      id: string;
+      title: string;
+      message: string;
+      scheduled_at: string;
+      timezone: string;
+      enabled: boolean;
+      next_due_at?: string | null;
+    }[];
+    occurrences: RecordData[];
+    copiedAt: string;
+  };
   preferences: Record<string, unknown>;
   pending: Operation[];
   conflicts: Record<string, SyncResult>;
@@ -115,6 +140,16 @@ function validateEnvelope(value: unknown): asserts value is Envelope {
     throw new Error("Backup criptografado inválido ou incompatível.");
 }
 function validateState(state: VaultState) {
+  validateBooks(state.books);
+  if (
+    state.planning &&
+    ![
+      state.planning.events,
+      state.planning.alarms,
+      state.planning.occurrences,
+    ].every(Array.isArray)
+  )
+    throw new Error("Cópia de agenda inválida.");
   if (
     state.format !== 1 ||
     !Number.isSafeInteger(state.cursor) ||

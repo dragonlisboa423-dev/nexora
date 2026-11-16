@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import OfflinePlanning, { planningSnapshot } from "./OfflinePlanning";
+import OfflineLibrary from "./OfflineLibrary";
+import { synchronizeBooks } from "./books";
 import PersonalOffline from "./PersonalOffline";
 import { Menu, LockKeyhole } from "lucide-react";
 import { api, download } from "../api";
@@ -107,7 +110,14 @@ export default function OfflineWorkspace() {
     setBusy(true);
     setError("");
     try {
-      await synchronize(stateRef.current, persist, controller.current.signal);
+      const synchronized = await synchronize(
+        stateRef.current,
+        persist,
+        controller.current.signal,
+      );
+      const withBooks = await synchronizeBooks(synchronized, persist);
+      if (withBooks.planning)
+        await persist({ ...withBooks, planning: await planningSnapshot() });
       setNotice("Sincronização concluída. Confira os conflitos, se houver.");
     } catch (error) {
       if ((error as Error).name !== "AbortError")
@@ -160,6 +170,20 @@ export default function OfflineWorkspace() {
     }
     if (navigator.onLine && stateRef.current && !stateRef.current.paused)
       void sync();
+  }
+  async function exclusive(
+    operation: (current: VaultState) => Promise<VaultState>,
+  ) {
+    if (active.current || !stateRef.current)
+      throw new Error("Aguarde a operação atual do cofre.");
+    active.current = true;
+    setBusy(true);
+    try {
+      await persist(await operation(stateRef.current));
+    } finally {
+      active.current = false;
+      setBusy(false);
+    }
   }
   async function enablePersonal() {
     if (active.current || !stateRef.current) return;
@@ -221,6 +245,8 @@ export default function OfflineWorkspace() {
             ["reminders", "Agenda local"],
             ["documents", "Documentos guardados"],
             ["personal", "Compras e Espaço locais"],
+            ["books", "Livros guardados"],
+            ["planning", "Agenda e alarmes guardados"],
             ["settings", "Cofre e sincronização"],
           ].map(([id, label]) => (
             <a
@@ -864,6 +890,26 @@ export default function OfflineWorkspace() {
                     </article>
                   ))}
                 </>
+              )}
+              {tab === "planning" && (
+                <OfflinePlanning
+                  state={state}
+                  save={saveLocal}
+                  exclusive={exclusive}
+                  busy={busy}
+                  online={online}
+                  fail={setError}
+                />
+              )}
+              {tab === "books" && (
+                <OfflineLibrary
+                  state={state}
+                  save={saveLocal}
+                  exclusive={exclusive}
+                  busy={busy}
+                  online={online}
+                  fail={setError}
+                />
               )}
               {tab === "personal" && (
                 <PersonalOffline

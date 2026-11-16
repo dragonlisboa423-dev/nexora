@@ -66,6 +66,9 @@ with test_server(port=8008) as base, sync_playwright() as playwright:
     ).wait_for()
     page.set_viewport_size({"width": 390, "height": 844})
     assert page.evaluate("document.documentElement.scrollWidth<=window.innerWidth")
+    page.wait_for_function(
+        "document.querySelector('.sidebar').getBoundingClientRect().right <= 0.5"
+    )
     page.screenshot(path="/tmp/saly-studio-mobile.png", full_page=True)
     assert not errors, errors
     print(

@@ -73,6 +73,9 @@ with test_server(port=8006) as base, sync_playwright() as playwright:
     page.set_viewport_size({"width": 390, "height": 844})
     assert page.evaluate("document.documentElement.scrollWidth<=window.innerWidth")
     assert page.get_by_role("article", name="Página 2: Segunda página E2E", exact=True).count() == 1
+    page.wait_for_function(
+        "document.querySelector('.sidebar').getBoundingClientRect().right <= 0.5"
+    )
     page.screenshot(path="/tmp/saly-book-mobile.png", full_page=True)
     page.once("dialog", lambda d: d.accept())
     page.get_by_role("button", name="Perguntar à SALY sobre esta página", exact=True).click()

@@ -352,6 +352,20 @@ def set_setting(key, value):
             c.execute(insert(config).values(id=key, data=value))
 
 
+def check_asset_capacity(size, replacing=None):
+    """Called inside asset write transactions; private binary quota, independent of Smolin."""
+    limit = max(1, min(2048, int(os.environ.get("SALY_MAX_PRIVATE_MEDIA_MB", "200")))) * 1024 * 1024
+    used = sum(
+        int(record.get("size", 0))
+        for record in all_records("private_assets")
+        if record["id"] != replacing
+    )
+    if used + size > limit:
+        raise ValueError(
+            "Limite privado de mídia atingido; exclua arquivos ou revise a configuração de disco"
+        )
+
+
 def audit(kind, detail):
     return save("activities", {"kind": kind, "detail": detail[:300]})
 

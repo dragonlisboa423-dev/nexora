@@ -40,7 +40,7 @@ class Source(Args):
                     raise ValueError()
                 _ = parsed.port
             except ValueError:
-                raise ValueError("Référence URL HTTPS invalide") from None
+                raise ValueError("Referência exige uma URL HTTPS válida") from None
         return self
 
 
@@ -357,6 +357,10 @@ def upload_image(key: str, file: UploadFile = File(...), _=Depends(owner)):
     with store.transaction() as connection:
         if not store.get("books", key):
             raise HTTPException(404, "Livro não encontrado")
+        try:
+            store.check_asset_capacity(len(content))
+        except ValueError as error:
+            raise HTTPException(413, str(error)) from None
         asset = store.save(
             "private_assets",
             {
@@ -368,6 +372,13 @@ def upload_image(key: str, file: UploadFile = File(...), _=Depends(owner)):
         )
         connection.execute(insert(store.asset_contents).values(id=asset["id"], content=content))
     return asset
+
+
+@router.get("/{key}/assets")
+def book_assets(key: str, _=Depends(owner)):
+    if not store.get("books", key):
+        raise HTTPException(404, "Livro não encontrado")
+    return [asset for asset in store.all_records("private_assets") if asset.get("book_id") == key]
 
 
 @router.delete("/{key}/assets/{asset_id}")
@@ -451,6 +462,7 @@ class Annotation(Args):
     selected_text: str = Field(default="", max_length=3000)
     note: str = Field(min_length=1, max_length=5000)
     confirm: bool = False
+    client_operation_id: str | None = Field(default=None, pattern=r"^[a-fA-F0-9-]{36}$")
 
 
 @router.get("/{key}/annotations")
@@ -465,7 +477,19 @@ def annotate(key: str, body: Annotation, _=Depends(owner)):
         raise HTTPException(400, "Confirme guardar a anotação")
     if body.page_id not in page_ids(key):
         raise HTTPException(422, "Página não encontrada")
-    return store.save("book_annotations", {"book_id": key, **body.model_dump(exclude={"confirm"})})
+    with store.transaction():
+        data = {"book_id": key, **body.model_dump(exclude={"confirm"})}
+        annotation_id = (
+            hashlib.sha256((key + body.client_operation_id).encode()).hexdigest()[:32]
+            if body.client_operation_id
+            else None
+        )
+        existing = store.get("book_annotations", annotation_id) if annotation_id else None
+        if existing:
+            if any(existing.get(field) != value for field, value in data.items()):
+                raise HTTPException(409, "Identificador de anotação já usado com outro conteúdo")
+            return existing
+        return store.save("book_annotations", data, annotation_id)
 
 
 @router.delete("/{key}/annotations/{annotation_id}")

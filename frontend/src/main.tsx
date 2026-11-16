@@ -16,6 +16,7 @@ import {
   Folder,
   BookOpen,
   Film,
+  FlaskConical,
   ChevronLeft,
   ChevronRight,
   Database,
@@ -68,7 +69,11 @@ const Space = lazy(() =>
 const Studio = lazy(() => import("./Studio"));
 const Library = lazy(() => import("./Library"));
 import { AlarmNotifier } from "./AlarmNotifier";
-import { VerificationDetails, type Verification } from "./Laboratory";
+import {
+  Laboratory,
+  VerificationDetails,
+  type Verification,
+} from "./Laboratory";
 const labels: Record<SalyState, string> = {
   synthesizing: "Preparando áudio",
   idle: "Em repouso",
@@ -429,6 +434,7 @@ function App() {
     ["/voices", "Biblioteca de vozes", AudioLines],
     ["/activity", "Atividades", ActivityIcon],
     ["/evaluation", "Avaliação", ShieldCheck],
+    ["/laboratory", "Laboratório SALY", FlaskConical],
     ["/settings", "Configurações", Settings],
   ] as const;
   return (
@@ -1059,6 +1065,10 @@ function App() {
                   <Studio notify={setError} />
                 </Suspense>
               }
+            />
+            <Route
+              path="/laboratory"
+              element={<Laboratory notify={setError} />}
             />
             <Route path="/tools" element={<Tools notify={setError} />} />
             <Route path="/activity" element={<Activity notify={setError} />} />

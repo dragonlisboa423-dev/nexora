@@ -18,3 +18,5 @@ SALY_SECURE_COOKIE=1 bash scripts/start.sh
 ```
 
 No Codespaces HTTPS, permita notificações se desejar, habilite os avisos em Alarmes e use os testes. O teste de apresentação cria ocorrência persistente real; não comprova funcionamento com aba fechada. Scripts de navegador usam servidor/banco descartáveis, sem consumir Groq.
+
+O cofre agora oferece cópia opcional de eventos, alarmes e ocorrências para consulta offline. Atualiza ao sincronizar. Essa cópia não entrega notificações nem agenda disparos no aparelho; edição de eventos/novos alarmes permanece online.

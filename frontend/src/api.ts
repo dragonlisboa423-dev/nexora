@@ -1,3 +1,12 @@
+export class ApiError extends Error {
+  constructor(
+    public status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
 export async function api(path: string, options: RequestInit = {}) {
   const res = await fetch("/api" + path, {
     ...options,
@@ -25,7 +34,8 @@ export async function api(path: string, options: RequestInit = {}) {
           )
           .join("; ")
       : "";
-    throw new Error(
+    throw new ApiError(
+      res.status,
       typeof data.detail === "string"
         ? data.detail
         : structured.message

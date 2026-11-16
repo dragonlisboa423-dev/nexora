@@ -1,6 +1,6 @@
 # Auditoria de implementação · especificação 2026.11.15
 
-Base inspecionada: commit `64812e5`, branch `feat/saly-smolin`. O prompt mestre completo, 58.859 bytes, foi lido integralmente e preservado em `CODEX_INTEGRATION_PROMPT.md`, SHA-256 `91c471f8866f9735f61a2c13321a38c9aa5d8a96426e5a14c2255cb4fbe39374`. Esta auditoria sucede a etapa independente documentada em `core-phase-1.md`.
+Base inspecionada: commit `64812e5`, branch `feat/saly-smolin`. O prompt mestre completo, 58.859 bytes, foi lido integralmente e preservado em `CODEX_INTEGRATION_PROMPT.md`, SHA-256 `91c471f8866f9735f61a2c13321a38c9aa5d8a96426e5a14c2255cb4fbe39374`. Esta auditoria sucede a etapa independente documentada em `core-phase-1.md`. O inventário abaixo registra a base histórica; o estado atual está consolidado em [SALY_IMPLEMENTATION_STATUS.md](SALY_IMPLEMENTATION_STATUS.md).
 
 ## Material encontrado
 
@@ -80,3 +80,7 @@ Rascunho original de Biologia com nove páginas e atividades determinísticas fo
 ## Progresso comprovado · fase 7 parcial
 
 Edição local de imagem e montagem FFmpeg com clipes, imagens, duas trilhas, legendas, transições, cancelamento e MP4 verificável passaram por testes reais. Conector Cloudflare segue desativado: contrato oficial recuperado no GitHub, mas conta/credencial/termos e geração externa não comprovados. Vídeo generativo continua não configurado. Veja `SALY_MEDIA_PROVIDERS.md` e `SALY_FREE_TIER_LIMITS.md`.
+
+## Fase 8 e estado atual
+
+A matriz atual consolidada está em `SALY_IMPLEMENTATION_STATUS.md`. Foram acrescentados livros/mídias selecionados no cofre, progresso/notas com conflitos/idempotência/exclusão, fotografia opcional de agenda/alarmes, consultas pessoais tipadas do agente sob opt-in separado, quota de mídia e diagnósticos locais/de navegador no Laboratório. A publicação editorial permanece manual. Credenciais/termos/teste real de geração externa, voz neural natural, encoder/OCR, Android físico/APK e Push/nativo permanecem bloqueados/pendentes conforme os relatórios; não houve gasto em API.

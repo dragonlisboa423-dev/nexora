@@ -271,3 +271,23 @@ def test_cloudflare_contract_and_daily_guard_with_controlled_transport_only(clie
     with pytest.raises(ValueError, match="uma requisição"):
         asyncio.run(provider.generate("segundo teste"))
     assert len(calls) == 1
+
+
+def test_private_media_quota_stops_new_binary_writes_without_deleting_existing(client, monkeypatch):
+    monkeypatch.setenv("SALY_MAX_PRIVATE_MEDIA_MB", "1")
+    first = upload_image(client)
+    with store.transaction():
+        store.save(
+            "private_assets",
+            {"scope": "studio", "mime": "image/png", "size": 1024 * 1024, "sha256": "quota-probe"},
+        )
+    image = Image.new("RGB", (20, 20), "green")
+    stream = io.BytesIO()
+    image.save(stream, format="PNG")
+    result = client.post(
+        "/api/media/assets?kind=image",
+        files={"file": ("next.png", stream.getvalue(), "image/png")},
+        headers={"X-Saly-Request": "1"},
+    )
+    assert result.status_code == 422 and "Limite privado" in result.text
+    assert client.get("/api/private-assets/" + first["id"]).status_code == 200

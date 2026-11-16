@@ -177,7 +177,7 @@ def capabilities(provider, embeddings_configured):
             "id": "memory",
             "name": "Memória persistente no servidor",
             "state": "partial",
-            "detail": "Banco e edição disponíveis. D06 testa roundtrip; persistência após reinício exige verificação separada. Sem cópia local offline no dispositivo.",
+            "detail": "Banco e edição disponíveis. D06 testa roundtrip. Cofre offline criptografado é opt-in e exige teste no dispositivo; reinício tem testes técnicos separados.",
         },
         {
             "id": "smolin",
@@ -196,14 +196,14 @@ def capabilities(provider, embeddings_configured):
         {
             "id": "images",
             "name": "Geração e edição de imagens",
-            "state": "blocked",
-            "detail": "Sem provedor/motor de imagens implementado e conectado. Nenhuma API paga foi habilitada.",
+            "state": "partial",
+            "detail": "Edição local por Pillow implementada. Adaptador Cloudflare desativado sem conta Free/termos/credencial; geração externa não certificada.",
         },
         {
             "id": "videos",
             "name": "Geração e edição de vídeos",
-            "state": "blocked",
-            "detail": "Sem pipeline de vídeo implementado. Exportação, progresso e cancelamento permanecem pendentes.",
+            "state": "partial",
+            "detail": "Montagem FFmpeg local com exportação/progresso/cancelamento implementada; disponibilidade do motor é testada no diagnóstico funcional. Vídeo generativo não configurado.",
         },
         {
             "id": "android",
@@ -215,7 +215,25 @@ def capabilities(provider, embeddings_configured):
             "id": "offline",
             "name": "Dados e IA offline no dispositivo",
             "state": "partial",
-            "detail": "Cofre criptografado IndexedDB opcional para memórias/lembretes, documentos escolhidos e consulta de configurações, com sync/conflitos. O backend não verifica o cofre deste aparelho; IA local não está instalada.",
+            "detail": "Cofre opt-in criptografado para memórias, tarefas, compras/gavetas/links, livros e mídias escolhidas, com revisões/conflitos. Agenda completa/alarmes ainda não são replicados; IA local não instalada. Teste no dispositivo é separado.",
+        },
+        {
+            "id": "planning",
+            "name": "Agenda e alarmes",
+            "state": "partial",
+            "detail": "Eventos/recorrência e scheduler persistentes. Sem Web Push/alarme nativo; exige backend e interface ativos. Diagnóstico não dispara alarmes pessoais.",
+        },
+        {
+            "id": "purchases",
+            "name": "Compras e Espaço",
+            "state": "partial",
+            "detail": "CRUD, centavos, anexos privados e links seguros implementados; cofre depende de consentimento e teste no dispositivo.",
+        },
+        {
+            "id": "library",
+            "name": "Biblioteca e Biologia",
+            "state": "partial",
+            "detail": "Autoria manual, publicação imutável, leitor e atividades didáticas. Rascunho científico requer revisão; microscópio sem micrografias/calibração.",
         },
     ]
 

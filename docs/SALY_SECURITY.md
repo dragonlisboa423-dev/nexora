@@ -9,3 +9,11 @@ Dados offline são opt-in e criptografados em IndexedDB. Senha do cofre é indep
 Sync só aceita entidades/campos conhecidos, revisão base e confirmação para exclusões/lembretes. Operação e recibo são atômicos. Conflitos não sobrescrevem silenciosamente dados, e a restauração de um cofre pausa envios. Tombstones propagam exclusões; rascunhos concorrentes ficam explícitos para decisão. API/arquivos privados nunca entram no Cache Storage público.
 
 Testes cobrem acesso anônimo, formato, hostilidade de PDF contra o limite de aprovação, transações, idempotência e conflitos. Eles não provam invulnerabilidade universal. Retenção/segredos em conteúdo pessoal, expiração de sessões, criptografia da infraestrutura e descarte de backups exigem políticas e revisões contínuas. A base existente mantém seu histórico de conversas; não se passou a alegar retenção mínima automática apenas por integrar o Core.
+
+## Recursos novos
+
+Consultas pessoais do agente têm opt-in específico, desligado por padrão; não há ferramenta de pagamento, publicação editorial ou shell. Revogar permissões de contexto invalida a época para inferências futuras, preservando o histórico visível. Não se promete retirar dados já enviados a terceiros. Texto de livro continua dado não confiável para comandos.
+
+Comprovantes e mídias são BLOBs autenticados, normalizados/validados e fora do cache público. Quota privada padrão de 200 MiB (`SALY_MAX_PRIVATE_MEDIA_MB`) é verificada dentro da transação, separada da quota de documentos. Imagens têm proteção de dimensões e remoção de metadados. AV usa caminhos gerados pelo servidor, formatos permitidos e protocolos file/pipe; não aceita URLs/playlists ou nomes de arquivo como comandos. Legendas entram por arquivo de texto com expansão desativada. Subprocessos recebem ambiente mínimo sem chaves, tempo/recursos e limites de saída.
+
+Mídia referenciada por versão editorial é preservada até exclusão do livro. Excluir um registro não apaga backups exportados, arquivos baixados ou conversas que receberam trechos por ação explícita. O cofre exige consentimento separado para novas categorias; livros/mídias guardados são dados privados, e exportar cópia JSON local fora do cofre produz arquivo que deve ser guardado privadamente. Nada disso comprova invulnerabilidade universal ou limpeza forense.

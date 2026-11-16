@@ -34,3 +34,7 @@ Tabelas `purchases`, `drawers`, `links` usam revisões e changelog. `private_ass
 ## Estúdio
 
 `media_jobs` guarda tipo, provedor, argumentos privados, entradas/saídas, estados, progresso real por etapa, erro sanitizado e timestamps. Binários usam `private_asset_contents`; metadados em `private_assets` separam escopo Estúdio, livro, tipo e método. Não se repetem automaticamente tarefas remotas em execução durante um reinício. Arquivos temporários por tarefa são descartados; resultados e entradas permanecem privados até exclusão.
+
+## Offline selecionado e diagnósticos
+
+O envelope v1 aceita extensões opcionais de livros e agenda; backups antigos sem essas áreas permanecem válidos. Cada livro guarda snapshot da edição, mídias selecionadas/SHA, progresso, notas pendentes e conflito. Progresso é versionado no servidor; anotações offline usam `client_operation_id`, ID derivado de livro/operação e transação para reenvio sem duplicação. `evaluations.kind` diferencia `core-lab-v1`, `feature-lab-v1` e `device-lab-v1`, preservando o relatório de avaliação anterior. Revogar contexto pessoal incrementa a época de contexto sem apagar a conversa exibida.

@@ -1,6 +1,6 @@
 # Implantação e recuperação
 
-Instalação PWA no Chrome Android, teste em modo avião e viabilidade de APK sem duplicar a interface estão em [android-offline.md](android-offline.md). A etapa Core não publica serviços nem implementa inferência local ou dados privados offline; o alcance exato está em [core-phase-1.md](core-phase-1.md).
+Instalação PWA no Chrome Android, teste em modo avião e viabilidade de APK sem duplicar a interface estão em [android-offline.md](android-offline.md). O relatório histórico Core está em [core-phase-1.md](core-phase-1.md); as fases posteriores acrescentaram cofre privado e novos módulos. Consulte o [estado atual](SALY_IMPLEMENTATION_STATUS.md) e [Android/offline atual](INSTALAR_SALY_ANDROID.md). Inferência local continua não implementada.
 
 ## Opção de desenvolvimento
 

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { deviceChecks } from "./device_lab";
 import { api, download, post } from "./api";
 
 type Core = {
@@ -36,7 +37,7 @@ type Run = {
 const statuses = {
   passed: "Passou",
   failed: "Falhou",
-  inconclusive: "Inconclusivo · não executado no modelo",
+  inconclusive: "Inconclusivo · teste ou dependência pendente",
 };
 const capabilityStates: Record<string, string> = {
   configured: "Configurado · requer teste específico",
@@ -94,6 +95,48 @@ export function Laboratory({ notify }: { notify: (message: string) => void }) {
       >
         {busy ? "Verificando localmente…" : "Executar testes locais · sem API"}
       </button>
+      <div className="toolbar">
+        <button
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            try {
+              const report = await post("/laboratory/features");
+              setRuns((previous) => [report, ...previous].slice(0, 50));
+            } catch (e) {
+              notify((e as Error).message);
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          Testar recursos locais · sem API externa
+        </button>
+        <button
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            try {
+              const report = await post("/laboratory/device", {
+                results: await deviceChecks(),
+              });
+              setRuns((previous) => [report, ...previous].slice(0, 50));
+            } catch (e) {
+              notify((e as Error).message);
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          Testar este dispositivo · som curto
+        </button>
+      </div>
+      <p>
+        Diagnóstico funcional usa entradas técnicas fixas para agenda, centavos,
+        URLs, livro, PNG, PDF, WAV e codec MP4. Não dispara seus alarmes nem
+        acessa documentos pessoais. Teste do dispositivo verifica PCM, IndexedDB
+        e cache público no navegador atual.
+      </p>
       {runs.map((run) => (
         <article
           key={run.id}

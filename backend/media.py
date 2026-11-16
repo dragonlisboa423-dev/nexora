@@ -71,6 +71,7 @@ def save_asset(content, mime, **metadata):
     if not content or len(content) > MAX_OUTPUT_BYTES:
         raise ValueError("Arquivo vazio ou acima de 30 MB")
     with store.transaction() as connection:
+        store.check_asset_capacity(len(content))
         record = store.save(
             "private_assets",
             {
