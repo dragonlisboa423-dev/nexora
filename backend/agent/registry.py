@@ -1,5 +1,6 @@
 import asyncio
 from datetime import UTC, datetime
+from typing import Literal
 
 from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field
@@ -9,6 +10,16 @@ from .. import storage as store
 from ..core.quantities import EnergyCheck, LoadCheck, check_energy_cost, check_load
 from ..integrations import integrations
 from ..memory import index_memory, search_memories
+from ..planning import (
+    Alarm,
+    CalendarEvent,
+    delete_alarm,
+    delete_event,
+    normalized_alarm,
+    normalized_event,
+    save_alarm,
+    save_event,
+)
 from ..services import Memory, memory_delete, memory_save
 from ..smolin.service import search as smolin_search
 from ..tools import calculate
@@ -51,6 +62,10 @@ class Reminder(Args):
     timezone: str = "America/Sao_Paulo"
     done: bool = False
     importance: float = Field(default=0.5, ge=0, le=1)
+    description: str = Field(default="", max_length=5000)
+    priority: Literal["low", "normal", "high"] = "normal"
+    calendar_event_id: str | None = Field(default=None, max_length=64)
+    completed_at: str | None = Field(default=None, max_length=60)
 
 
 class UpdateReminder(Reminder):
@@ -79,8 +94,65 @@ class Calculation(Args):
     expression: str = Field(max_length=200)
 
 
+class UpdateCalendar(CalendarEvent):
+    id: str = Field(max_length=64)
+
+
+class UpdateAlarm(Alarm):
+    id: str = Field(max_length=64)
+
+
 # name: (schema, description, approval required, integration)
 REGISTRY = {
+    "update_calendar_event": (
+        UpdateCalendar,
+        "Propor alteração de um evento existente e seus alarmes associados; exige aprovação da versão apresentada.",
+        True,
+        None,
+    ),
+    "update_alarm": (
+        UpdateAlarm,
+        "Propor alteração de alarme, fuso, modo e repetição; exige aprovação.",
+        True,
+        None,
+    ),
+    "get_current_time": (
+        Empty,
+        "Consultar data/hora UTC real e fuso inicial America/Sao_Paulo antes de interpretar amanhã, hoje ou horários relativos.",
+        False,
+        None,
+    ),
+    "list_calendar_events": (Empty, "Consultar eventos reais da agenda.", False, None),
+    "create_calendar_event": (
+        CalendarEvent,
+        "Propor evento com início, fim, fuso e eventual alarme; exige aprovação. Sobreposições precisam de autorização explícita.",
+        True,
+        None,
+    ),
+    "delete_calendar_event": (
+        Key,
+        "Excluir evento e cancelar alarmes associados após aprovação.",
+        True,
+        None,
+    ),
+    "list_alarms": (
+        Empty,
+        "Consultar alarmes reais; não comprova entrega de notificação.",
+        False,
+        None,
+    ),
+    "create_alarm": (
+        Alarm,
+        "Propor alarme opcional com horário, fuso, repetição e mensagem; exige aprovação. PWA não garante disparo com app fechado.",
+        True,
+        None,
+    ),
+    "delete_alarm": (
+        Key,
+        "Excluir alarme e cancelar ocorrências pendentes após aprovação.",
+        True,
+        None,
+    ),
     "list_voices": (
         Empty,
         "Consultar catálogo e configuração real de motores de voz; a reprodução é acionada na interface.",
@@ -189,8 +261,59 @@ def normalized_reminder(args):
     return {**args, "due_at": stamp.astimezone(UTC).isoformat()}
 
 
+def completed_reminder(args, previous=None):
+    data = normalized_reminder(args)
+    if data.get("calendar_event_id") and not store.get(
+        "calendar_events", data["calendar_event_id"]
+    ):
+        raise ValueError("Evento associado não encontrado")
+    data["completed_at"] = (
+        ((previous or {}).get("completed_at") if (previous or {}).get("done") else store.now())
+        if data.get("done")
+        else None
+    )
+    return data
+
+
 async def execute(name, args):
     args = validate(name, args)
+    if name == "get_current_time":
+        from zoneinfo import ZoneInfo
+
+        now = datetime.now(UTC)
+        timezone = (
+            store.setting("preferences", {}).get("notifications", {}).get("timezone")
+            or "America/Sao_Paulo"
+        )
+        return {
+            "utc": now.isoformat(),
+            "timezone": timezone,
+            "local": now.astimezone(ZoneInfo(timezone)).isoformat(),
+        }
+    if name == "list_calendar_events":
+        return store.all_records("calendar_events")
+    if name == "list_alarms":
+        return store.all_records("alarms")
+    if name == "create_calendar_event":
+        return save_event(args)
+    if name == "update_calendar_event":
+        key = args.pop("id")
+        if not store.get("calendar_events", key):
+            raise ValueError("Evento não encontrado")
+        return save_event(args, key)
+    if name == "delete_calendar_event":
+        delete_event(args["id"])
+        return {"deleted": True}
+    if name == "create_alarm":
+        return save_alarm(args)
+    if name == "update_alarm":
+        key = args.pop("id")
+        if not store.get("alarms", key):
+            raise ValueError("Alarme não encontrado")
+        return save_alarm(args, key)
+    if name == "delete_alarm":
+        delete_alarm(args["id"])
+        return {"deleted": True}
     if name == "list_voices":
         return voice_catalog(True)
     if name == "check_load":
@@ -235,9 +358,10 @@ async def execute(name, args):
         return store.all_records("reminders")
     if name in ("create_reminder", "update_reminder"):
         key = args.pop("id", None)
-        if key and not store.get("reminders", key):
+        current = store.get("reminders", key) if key else None
+        if key and not current:
             raise ValueError("Lembrete não encontrado")
-        return store.save("reminders", normalized_reminder(args), key)
+        return store.save("reminders", completed_reminder(args, current), key)
     if name == "delete_reminder":
         if not store.get("reminders", args["id"]):
             raise ValueError("Lembrete não encontrado")
@@ -266,6 +390,16 @@ async def request_tool(name, args, conversation_id=None):
     validated = validate(name, args)
     if name in ("create_reminder", "update_reminder"):
         validated = normalized_reminder(validated)
+    if name in {"create_calendar_event", "update_calendar_event"}:
+        key = validated.pop("id", None)
+        validated = normalized_event(validated)
+        if key:
+            validated["id"] = key
+    if name in {"create_alarm", "update_alarm"}:
+        key = validated.pop("id", None)
+        validated = normalized_alarm(validated)
+        if key:
+            validated["id"] = key
     execution = store.save(
         "tool_executions",
         {
@@ -277,6 +411,34 @@ async def request_tool(name, args, conversation_id=None):
     )
     if REGISTRY[name][2]:
         preview = None
+        if name in {
+            "delete_calendar_event",
+            "update_calendar_event",
+            "delete_alarm",
+            "update_alarm",
+        }:
+            kind = (
+                "calendar_events"
+                if name in {"delete_calendar_event", "update_calendar_event"}
+                else "alarms"
+            )
+            target = store.get(kind, validated["id"])
+            if not target:
+                raise ValueError("Registro não encontrado")
+            preview = {
+                "kind": kind,
+                "id": target["id"],
+                "updated": target["updated"],
+                "summary": target["title"],
+            }
+        if name == "create_alarm" and validated.get("linked_event_id"):
+            target = store.get("calendar_events", validated["linked_event_id"])
+            preview = {
+                "kind": "calendar_events",
+                "id": target["id"],
+                "updated": target["updated"],
+                "summary": target["title"] + " · " + target["start_at"],
+            }
         if name in ("delete_memory", "update_memory", "delete_reminder", "update_reminder"):
             kind = "memories" if "memory" in name else "reminders"
             target = store.get(kind, validated["id"])

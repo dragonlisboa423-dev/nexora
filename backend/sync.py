@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy import func, insert, select
 
 from . import storage as store
-from .agent.registry import Reminder, normalized_reminder
+from .agent.registry import Reminder, completed_reminder
 from .security import owner, throttle
 from .services import Memory, memory_delete, memory_save
 
@@ -101,9 +101,11 @@ class Push(BaseModel):
 
 
 def current_state(operation, connection):
-    row = connection.execute(select(store.tables[operation.entity_type]).where(
-        store.tables[operation.entity_type].c.id == operation.entity_id
-    ).with_for_update()).first()
+    row = connection.execute(
+        select(store.tables[operation.entity_type])
+        .where(store.tables[operation.entity_type].c.id == operation.entity_id)
+        .with_for_update()
+    ).first()
     record = store.pack(row) if row else None
     latest = connection.execute(
         select(store.sync_changes.c.revision)
@@ -178,7 +180,9 @@ def apply(operation):
                 create=current is None,
             )
         else:
-            value = normalized_reminder(Reminder.model_validate(operation.payload).model_dump())
+            value = completed_reminder(
+                Reminder.model_validate(operation.payload).model_dump(), current
+            )
             store.save("reminders", value, operation.entity_id)
         current, revision = current_state(operation, connection)
         connection.execute(

@@ -18,3 +18,7 @@ O bootstrap captura o cursor antes de ler as entidades. Atualizações concorren
 `IndexedDB saly-private-vault`, versão 1, contém um envelope AES-GCM. A chave é derivada por PBKDF2-SHA256 com 210.000 iterações e salt aleatório de 16 bytes. Cada escrita usa nonce aleatório de 12 bytes e autentica cabeçalho/revisão. A chave não é extraível nem persistida. Há comparação de revisão/salt para impedir sobrescrita silenciosa por outra aba. Backups são envelopes criptografados, validados antes de substituir o cofre; restauração recriptografa e pausa sincronização até revisão.
 
 O cofre limita o JSON a 30 MB e cada original escolhido a 10 MB, verificando SHA-256 contra o metadado do servidor. Limites de espaço do browser continuam aplicáveis. `navigator.storage.persist()` é solicitado, mas pode ser recusado. Backups SQLite administrativos continuam necessários; documentos e backup de Core em arquivos precisam ser considerados na política de recuperação da hospedagem. Não execute `DROP`, reset ou exclusão de volume para atualizar.
+
+## Agenda e alarmes
+
+Tabelas JSON aditivas `calendar_events`, `alarms`, `alarm_occurrences`; as duas primeiras têm revisão gerenciada pelo servidor. Elas não são acrescentadas silenciosamente ao protocolo offline existente, restrito a memórias/lembretes/documentos. Ocorrências usam IDs determinísticos e estado persistente, com lease/claim, apresentação relatada, adiamento e conclusão. Contêm metadados privados; exigem a mesma sessão de proprietária.

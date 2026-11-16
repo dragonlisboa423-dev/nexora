@@ -36,6 +36,10 @@ const reminderFields = [
   "timezone",
   "done",
   "importance",
+  "description",
+  "priority",
+  "calendar_event_id",
+  "completed_at",
 ];
 function payload(record: RecordData, fields: string[]) {
   return Object.fromEntries(

@@ -1238,6 +1238,54 @@ main {
   }
 }
 /* Smolin and owner-only workflow */
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 5px;
+  margin: 18px 0;
+}
+.calendar-cell {
+  min-height: 92px;
+  min-width: 0;
+  border: 1px solid #29434a;
+  border-radius: 7px;
+  padding: 7px;
+  background: #0b1c22;
+}
+.calendar-entry {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+  background: #10282d;
+  color: #cce5e3;
+  border: 0;
+  border-left: 3px solid #7acfc1;
+  font-size: 11px;
+  padding: 7px;
+  margin: 5px 0;
+  overflow-wrap: anywhere;
+}
+.calendar-entry small {
+  font-size: 9px;
+  font-weight: 400;
+}
+@media (max-width: 600px) {
+  .calendar-cell {
+    padding: 3px;
+    min-height: 70px;
+  }
+  .calendar-cell > button.text-button {
+    font-size: 8px;
+  }
+  .calendar-entry {
+    padding: 3px;
+    font-size: 8px;
+  }
+  .calendar-entry small {
+    display: none;
+  }
+}
 .dropzone {
   border: 1px dashed #47756d;
   border-radius: 16px;

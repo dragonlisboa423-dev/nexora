@@ -166,7 +166,13 @@ export function Tools({ notify }: { notify: (s: string) => void }) {
     </>
   );
 }
-export function Agenda({ notify }: { notify: (s: string) => void }) {
+export function Agenda({
+  notify,
+  embedded = false,
+}: {
+  notify: (s: string) => void;
+  embedded?: boolean;
+}) {
   const [items, setItems] = useState<any[]>([]),
     [editing, setEditing] = useState<any>(null);
   const load = () =>
@@ -180,11 +186,14 @@ export function Agenda({ notify }: { notify: (s: string) => void }) {
   }, []);
   return (
     <>
-      <PageTitle
-        eyebrow="CONTINUIDADE · AMERICA/SAO_PAULO"
-        title="Agenda e lembretes"
-        text="Agendamentos persistentes. Avisos são exibidos enquanto a aplicação estiver aberta; salvar um lembrete não significa que uma notificação foi entregue."
-      />
+      {!embedded && (
+        <PageTitle
+          eyebrow="CONTINUIDADE · AMERICA/SAO_PAULO"
+          title="Agenda e lembretes"
+          text="Agendamentos persistentes. Avisos são exibidos enquanto a aplicação estiver aberta; salvar um lembrete não significa que uma notificação foi entregue."
+        />
+      )}
+      {embedded && <h2>Tarefas e lembretes</h2>}
       <button
         onClick={() =>
           setEditing({
@@ -211,6 +220,7 @@ export function Agenda({ notify }: { notify: (s: string) => void }) {
               delete body.id;
               delete body.created;
               delete body.updated;
+              delete body.revision;
               await (editing.id
                 ? put("/reminders/" + editing.id, body)
                 : post("/reminders", body));
@@ -250,6 +260,29 @@ export function Agenda({ notify }: { notify: (s: string) => void }) {
                 setEditing({ ...editing, project: e.target.value })
               }
             />
+          </label>
+          <label>
+            Descrição da tarefa
+            <textarea
+              maxLength={5000}
+              value={editing.description ?? ""}
+              onChange={(event) =>
+                setEditing({ ...editing, description: event.target.value })
+              }
+            />
+          </label>
+          <label>
+            Prioridade da tarefa
+            <select
+              value={editing.priority ?? "normal"}
+              onChange={(event) =>
+                setEditing({ ...editing, priority: event.target.value })
+              }
+            >
+              <option value="low">Baixa</option>
+              <option value="normal">Normal</option>
+              <option value="high">Alta</option>
+            </select>
           </label>
           <label className="check">
             <input

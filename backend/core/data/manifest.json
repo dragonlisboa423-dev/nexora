@@ -2,7 +2,7 @@
   "file": "SALY_CORE_MEMORY_v1.json",
   "sha256": "8e9ff45e4d8a9793454d9c0442f3180c377314b79fcb443bbb811847b613fcbc",
   "schema_version": "1.0.0",
-  "adapter_version": "1.0.0",
+  "adapter_version": "1.1.0",
   "authorization": "Integração solicitada explicitamente pela proprietária em 2026-11-15; semente original preservada integralmente.",
   "package_status": "Prompt mestre completo recebido em 2026-11-15 e registrado em docs/CODEX_INTEGRATION_PROMPT.md. O ZIP modular SALY_Core_v1 ainda não foi recebido; adaptador da semente JSON existente preservado."
 }

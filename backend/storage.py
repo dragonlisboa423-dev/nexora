@@ -67,6 +67,9 @@ for name in [
     "agent_approvals",
     "document_jobs",
     "core_imports",
+    "calendar_events",
+    "alarms",
+    "alarm_occurrences",
 ]:
     tables[name] = Table(
         name,
@@ -107,6 +110,7 @@ memory_vectors = Table(
     Column("embedding_version", String, nullable=False),
 )
 SYNC_KINDS = {"memories", "reminders", "documents"}
+VERSIONED_KINDS = {"calendar_events", "alarms"}
 sync_changes = Table(
     "sync_changes",
     metadata,
@@ -284,7 +288,7 @@ def save(kind, data, key=None):
         payload = {
             k: v for k, v in data.items() if k not in ("id", "created", "updated", "revision")
         }
-        if kind in SYNC_KINDS:
+        if kind in SYNC_KINDS or kind in VERSIONED_KINDS:
             payload["revision"] = int(old.get("revision", 1)) + 1 if old else 1
         values = {"data": payload, "updated": now()}
         if old:

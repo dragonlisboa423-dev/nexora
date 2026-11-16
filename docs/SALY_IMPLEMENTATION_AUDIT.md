@@ -60,3 +60,7 @@ As consultas oficiais ao modelo Cloudflare e à ficha Kokoro foram tentadas com 
 ## Progresso comprovado · fase 2 parcial
 
 Motor eSpeak NG real, pt-BR com variante feminina `f3`, foi verificado por pacotes oficiais/licenças e integrado como síntese independente. WAV, reprodução, pausa/parada, seleção e amplitude do núcleo passaram em API/Chromium. A voz é artificial por formantes: não satisfaz ainda o requisito de naturalidade neural. Kokoro/Piper, instalação no aparelho e áudio físico permanecem pendentes. Microfone e vozes do navegador foram preservados; não existe escuta permanente disfarçada.
+
+## Progresso comprovado · fase 3
+
+Agenda com eventos/recorrência, prévia de conflitos e alarmes persistentes foi exercitada por API, reinício em processos separados e Chromium. Suíte: 114 Python, 1 PostgreSQL pulado, 9 Vitest e build; regressão visual passou. Avisos dependem de backend/interface ativos; Push e alarme nativo permanecem ausentes. Consulte `SALY_ALARMS_AND_AGENDA.md`.

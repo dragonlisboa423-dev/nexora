@@ -10,6 +10,7 @@ import {
 import {
   Activity as ActivityIcon,
   AudioLines,
+  Bell,
   Brain,
   ChevronLeft,
   ChevronRight,
@@ -44,10 +45,17 @@ import "./style.css";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Smolin } from "./Smolin";
-import { Approvals, Agenda, Tools, ReminderAlerts } from "./AgentPanels";
+import { Approvals, Tools, ReminderAlerts } from "./AgentPanels";
 import { emit, transition, useOperations } from "./operations";
 import { PwaUpdate } from "./pwa";
 const OfflineWorkspace = lazy(() => import("./offline/OfflineWorkspace"));
+const PlanningPage = lazy(() =>
+  import("./Planning").then((module) => ({ default: module.PlanningPage })),
+);
+const AlarmsPage = lazy(() =>
+  import("./Planning").then((module) => ({ default: module.AlarmsPage })),
+);
+import { AlarmNotifier } from "./AlarmNotifier";
 import { VerificationDetails, type Verification } from "./Laboratory";
 const labels: Record<SalyState, string> = {
   synthesizing: "Preparando áudio",
@@ -396,6 +404,7 @@ function App() {
     ["/memory", "Memórias", Brain],
     ["/knowledge", "Centro Smolin", Database],
     ["/agenda", "Agenda", ActivityIcon],
+    ["/alarms", "Alarmes", Bell],
     ["/tools", "Ferramentas e integrações", ShieldCheck],
     ["/voices", "Biblioteca de vozes", AudioLines],
     ["/activity", "Atividades", ActivityIcon],
@@ -531,6 +540,13 @@ function App() {
         </header>
         <main id="main">
           <PwaUpdate />
+          <AlarmNotifier
+            enabled={prefs?.notifications?.enabled ?? false}
+            speak={(text) => {
+              if (prefs) audio.speak(text, prefs.voice);
+            }}
+            stop={audio.stopSpeech}
+          />
           <ReminderAlerts
             enabled={prefs?.notifications?.enabled ?? false}
             quietStart={prefs?.notifications?.quietStart}
@@ -964,7 +980,27 @@ function App() {
                 )
               }
             />
-            <Route path="/agenda" element={<Agenda notify={setError} />} />
+            <Route
+              path="/agenda"
+              element={
+                <Suspense fallback={<p>Carregando agenda…</p>}>
+                  <PlanningPage
+                    notify={setError}
+                    timezone={prefs?.notifications?.timezone}
+                  />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/alarms"
+              element={
+                prefs && (
+                  <Suspense fallback={<p>Carregando alarmes…</p>}>
+                    <AlarmsPage prefs={prefs} save={save} notify={setError} />
+                  </Suspense>
+                )
+              }
+            />
             <Route path="/tools" element={<Tools notify={setError} />} />
             <Route path="/activity" element={<Activity notify={setError} />} />
             <Route

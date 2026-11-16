@@ -26,6 +26,8 @@ from .imports import MemoryImport, validation_details
 from .llm.connection import verify_connection
 from .llm.provider import Provider, ProviderError
 from .memory import index_memory, search_memories
+from .planning import router as planning_router
+from .planning import scheduler as alarm_scheduler
 from .security import COOKIE, owner, throttle, unlock
 from .services import Memory, memory_delete, memory_save
 from .smolin import service as smolin
@@ -41,11 +43,21 @@ async def lifespan(app):
     for job in store.all_records("document_jobs"):
         if job["status"] in ("queued", "processing") and not job.get("cancelled"):
             smolin.start(job["document_id"], job["id"])
-    yield
-    for task in tuple(smolin.TASKS):
-        task.cancel()
-    if smolin.TASKS:
-        await asyncio.gather(*tuple(smolin.TASKS), return_exceptions=True)
+    alarm_task = (
+        asyncio.create_task(alarm_scheduler())
+        if os.environ.get("SALY_DISABLE_ALARM_SCHEDULER") != "1"
+        else None
+    )
+    try:
+        yield
+    finally:
+        if alarm_task:
+            alarm_task.cancel()
+            await asyncio.gather(alarm_task, return_exceptions=True)
+        for task in tuple(smolin.TASKS):
+            task.cancel()
+        if smolin.TASKS:
+            await asyncio.gather(*tuple(smolin.TASKS), return_exceptions=True)
 
 
 app = FastAPI(title="SALY Intelligence · Centro Smolin", version="0.4.0", lifespan=lifespan)
@@ -1046,6 +1058,7 @@ def backup(_=Depends(owner)):
 app.include_router(core_admin_router)
 app.include_router(sync_router)
 app.include_router(voices_router)
+app.include_router(planning_router)
 
 DIST = Path(__file__).resolve().parents[1] / "frontend" / "dist"
 

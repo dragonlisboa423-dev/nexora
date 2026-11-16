@@ -43,6 +43,25 @@ def validation_details(errors):
             "model_type": "deve ser um objeto JSON",
         }
         message = messages.get(error["type"], "valor incompatível com o formato esperado")
+        if error["type"] == "value_error":
+            safe_message = error.get("msg", "").removeprefix("Value error, ")
+            if safe_message in {
+                "Fuso horário inválido",
+                "Horário inexistente neste fuso",
+                "Horário ambíguo: forneça um deslocamento UTC explícito",
+                "Intervalo do evento inválido ou acima de um ano",
+                "Alarme deve estar entre os anos 2000 e 2200",
+                "A data inicial deve corresponder ao padrão de repetição",
+                "A recorrência não pode iniciar em horário civil ambíguo; escolha outro início",
+                "Use recorrência diária, semanal, mensal ou anual",
+                "Campo de recorrência não suportado",
+                "Intervalo/contagem de recorrência fora do limite",
+                "Dias da semana inválidos",
+                "Dia do mês inválido",
+                "UNTIL deve ser um instante UTC YYYYMMDDTHHMMSSZ",
+                "Escolha UNTIL ou COUNT, não os dois",
+            }:
+                message = safe_message
         if error["type"] == "value_error" and "Core Memory" in error.get("msg", ""):
             message = "Core Memory não é memória pessoal; use a verificação administrativa do Core."
         fields.append({"field": location, "message": message, "type": error["type"]})
