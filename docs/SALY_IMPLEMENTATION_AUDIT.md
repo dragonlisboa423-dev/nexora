@@ -68,3 +68,7 @@ Agenda com eventos/recorrência, prévia de conflitos e alarmes persistentes foi
 ## Progresso comprovado · fase 4
 
 Compras manuais/orçamento em centavos, comprovantes normalizados privados e gavetas/links seguros foram exercitados por API/Chromium, incluindo edição offline opt-in e sincronização. Binários de comprovantes e novos alarmes não são replicados no cofre; orçamento local é consulta. Consulte `SALY_PURCHASES.md` e `SALY_SPACE_DRAWERS.md`.
+
+## Progresso comprovado · fase 5
+
+Editor manual e leitor estruturado foram testados com versões publicadas imutáveis, rascunhos/restauração, notas, progresso, páginas duplas/únicas e contexto de tutoria apenas preparado. Conteúdo científico, mídia audiovisual e cópia de livros offline são extensões posteriores; ver `SALY_INTERACTIVE_LIBRARY.md`.

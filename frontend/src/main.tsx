@@ -14,6 +14,7 @@ import {
   Brain,
   ShoppingBag,
   Folder,
+  BookOpen,
   ChevronLeft,
   ChevronRight,
   Database,
@@ -63,6 +64,7 @@ const Purchases = lazy(() =>
 const Space = lazy(() =>
   import("./Personal").then((m) => ({ default: m.Space })),
 );
+const Library = lazy(() => import("./Library"));
 import { AlarmNotifier } from "./AlarmNotifier";
 import { VerificationDetails, type Verification } from "./Laboratory";
 const labels: Record<SalyState, string> = {
@@ -236,6 +238,10 @@ function App() {
     audio.stopMic();
     abort.current?.abort();
   }, [location.pathname]);
+  useEffect(() => {
+    const request = location.state?.salyBookDraft;
+    if (typeof request === "string") setInput(request.slice(0, 12000));
+  }, [location.key]);
   async function save(p: Prefs) {
     setPrefs(p);
     try {
@@ -415,6 +421,7 @@ function App() {
     ["/alarms", "Alarmes", Bell],
     ["/purchases", "Compras", ShoppingBag],
     ["/space", "Espaço", Folder],
+    ["/library", "Biblioteca", BookOpen],
     ["/tools", "Ferramentas e integrações", ShieldCheck],
     ["/voices", "Biblioteca de vozes", AudioLines],
     ["/activity", "Atividades", ActivityIcon],
@@ -1024,6 +1031,21 @@ function App() {
               element={
                 <Suspense fallback={<p>Carregando espaço…</p>}>
                   <Space notify={setError} />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/library"
+              element={
+                <Suspense fallback={<p>Carregando biblioteca…</p>}>
+                  <Library
+                    notify={setError}
+                    speak={(text) => prefs && audio.speak(text, prefs.voice)}
+                    stop={audio.stopSpeech}
+                    pause={audio.pause}
+                    resume={audio.resume}
+                    speechState={state}
+                  />
                 </Suspense>
               }
             />

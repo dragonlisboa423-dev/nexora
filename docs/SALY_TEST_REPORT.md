@@ -40,3 +40,7 @@ Em 2026-11-16, `bash scripts/test.sh` passou: **114 Python, 1 PostgreSQL pulado 
 Seis testes novos de domínio passaram, incluindo valores em centavos, orçamento, parcelas, revisão, imagem real normalizada/privada, exclusão, alertas, esquemas de URL, importação atômica e sincronização opt-in/cascatas. Onze testes combinados de domínio/sincronização passaram. `browser_personal.py` passou com comprovante real, acesso anônimo negado, edição, gavetas, favoritos, busca, responsividade, cópia financeira autorizada, criação/recarga offline e envio ao reconectar. A primeira rodada detectou nome acessível incompleto em seletor; corrigido e reexecutado. Nenhuma API externa foi chamada.
 
 Regressão após a fase 4: **120 testes Python passaram, 1 PostgreSQL pulado por DSN ausente, 9 Vitest e build passaram**.
+
+## Fase 5 · Biblioteca
+
+Três testes Python passaram: publicação imutável, restauração como rascunho, revisão concorrente, progresso/tentativas/notas persistidos, exclusão completa e recusa de código/configuração/URL/mídia cruzada. `browser_library.py` passou: autoria manual, duas páginas reais, progresso/marcador/anotação, busca/última página, revisão/publicação explícita, viewport móvel e contexto preparado sem envio. O teste identificou rótulo acessível incompleto em textarea com conteúdo; corrigido. Build passou e não houve erros de página ou chamadas remotas.

@@ -23,6 +23,7 @@ from .core.admin import router as core_admin_router
 from .core.laboratory import run_laboratory
 from .core.policy import context_message
 from .imports import MemoryImport, validation_details
+from .library import router as library_router
 from .llm.connection import verify_connection
 from .llm.provider import Provider, ProviderError
 from .memory import index_memory, search_memories
@@ -1061,6 +1062,7 @@ app.include_router(sync_router)
 app.include_router(voices_router)
 app.include_router(planning_router)
 app.include_router(personal_router)
+app.include_router(library_router)
 
 DIST = Path(__file__).resolve().parents[1] / "frontend" / "dist"
 

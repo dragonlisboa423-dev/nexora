@@ -26,3 +26,7 @@ Tabelas JSON aditivas `calendar_events`, `alarms`, `alarm_occurrences`; as duas 
 ## Compras e Espaço
 
 Tabelas `purchases`, `drawers`, `links` usam revisões e changelog. `private_assets` guarda metadados/SHA-256, `private_asset_contents` guarda bytes normalizados com FK e exclusão em cascata, na mesma transação do registro. Orçamentos ficam em `app_config.purchase_budgets`. O protocolo padrão continua retornando somente três tipos originais; novos clientes solicitam `kinds=purchases,drawers,links` após consentimento explícito no cofre. Clientes antigos pulam estes registros. Changelog não guarda o conteúdo financeiro.
+
+## Biblioteca
+
+`books` guarda rascunho/versionamento e referência à publicação. `book_versions` contém snapshots imutáveis/hash/ação; `reading_progress` guarda página, concluídas, marcadores e tentativas; `book_annotations` guarda notas privadas vinculadas a livro/página. Revisões controlam concorrência. Mídias usam os BLOBs privados existentes, com `book_id` validado; não reutilizam comprovantes de compras. Todas são migrações aditivas.

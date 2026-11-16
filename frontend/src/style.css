@@ -1517,3 +1517,144 @@ details > summary {
 .toolbar input {
   max-width: 100%;
 }
+
+.book-catalog {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 270px), 1fr));
+  gap: 30px;
+  padding: 22px 0;
+}
+.book-cover {
+  min-height: 330px;
+  padding: 32px 28px;
+  border-radius: 4px 16px 16px 4px;
+  border-left: 12px solid #0c332f;
+  box-shadow: 10px 14px 25px #0007;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  position: relative;
+  overflow: hidden;
+}
+.book-cover > img {
+  max-height: 130px;
+  object-fit: cover;
+}
+.book-cover h2 {
+  font-family: Georgia, serif;
+  font-size: 1.8rem;
+}
+.book-spread {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  perspective: 1400px;
+  margin: 24px 0;
+  outline-offset: 6px;
+}
+.book-leaf {
+  padding: 32px;
+  min-width: 0;
+  position: relative;
+  background: linear-gradient(100deg, #102b2c, #102125 93%, #071a1d);
+  border: 1px solid #345554;
+  box-shadow:
+    inset 8px 0 16px #0004,
+    10px 10px 20px #0004;
+  color: #e1ece7;
+  overflow-wrap: anywhere;
+}
+.book-leaf h2 {
+  font-family: Georgia, serif;
+  line-height: 1.3;
+}
+.book-leaf p,
+.book-leaf li {
+  line-height: 1.8;
+}
+.book-leaf img,
+.book-leaf video,
+.book-leaf audio {
+  max-width: 100%;
+}
+.book-leaf figure {
+  margin: 20px 0;
+}
+.book-leaf .toolbar {
+  flex-wrap: wrap;
+}
+.book-leaf figcaption,
+.book-sources {
+  font-size: 0.8rem;
+  color: #acd0cb;
+}
+.book-spread .book-leaf {
+  animation: leaf-turn 0.45s ease-out;
+  transform-origin: left center;
+}
+.page-number {
+  display: block;
+  text-align: center;
+  margin-top: 26px;
+}
+.book-flow {
+  display: grid;
+  gap: 24px;
+  max-width: 900px;
+  margin: auto;
+}
+.book-flow .book-leaf {
+  box-shadow: none;
+  animation: none;
+}
+.reader-title {
+  max-width: 850px;
+  margin: 30px 0;
+}
+.book-editor fieldset {
+  border: 1px solid #315453;
+  border-radius: 12px;
+  margin: 20px 0;
+  padding: 18px;
+}
+.book-editor textarea {
+  width: 100%;
+}
+.science-block {
+  border: 1px solid #36665d;
+  border-radius: 16px;
+  padding: 18px;
+  margin: 20px 0;
+  overflow: hidden;
+}
+.science-block fieldset {
+  border: 0;
+  display: grid;
+  gap: 12px;
+}
+.science-block input[type="radio"] {
+  width: auto;
+}
+@keyframes leaf-turn {
+  from {
+    transform: rotateY(-7deg);
+    filter: brightness(0.7);
+  }
+  to {
+    transform: rotateY(0);
+    filter: brightness(1);
+  }
+}
+@media (max-width: 1000px) {
+  .book-spread {
+    grid-template-columns: 1fr;
+  }
+  .book-leaf {
+    padding: 22px 16px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .book-spread .book-leaf {
+    animation: none;
+  }
+}

@@ -74,6 +74,10 @@ for name in [
     "drawers",
     "links",
     "private_assets",
+    "books",
+    "book_versions",
+    "reading_progress",
+    "book_annotations",
 ]:
     tables[name] = Table(
         name,
@@ -121,7 +125,7 @@ memory_vectors = Table(
 )
 BASE_SYNC_KINDS = {"memories", "reminders", "documents"}
 SYNC_KINDS = BASE_SYNC_KINDS | {"purchases", "drawers", "links"}
-VERSIONED_KINDS = {"calendar_events", "alarms"}
+VERSIONED_KINDS = {"calendar_events", "alarms", "books", "reading_progress", "book_annotations"}
 sync_changes = Table(
     "sync_changes",
     metadata,
