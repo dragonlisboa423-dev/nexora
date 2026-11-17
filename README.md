@@ -229,3 +229,5 @@ npm --prefix frontend run dev
 ```
 
 Documentação técnica e limites: [arquitetura](docs/architecture.md), [validação](docs/validation.md), [entrega](docs/delivery.md). Funcionalidades ainda dependentes de serviços externos não são apresentadas como validadas.
+
+A evolução da biblioteca, retomada de importações, OCR opcional, recuperação LSA local, mapa com fontes e conversa por voz está documentada em [Biblioteca e voz](docs/SALY_LIBRARY_VOICE_EVOLUTION.md), com os limites reais de Android/offline.

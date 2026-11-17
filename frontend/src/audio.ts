@@ -62,7 +62,7 @@ export function useAudio(
     setListening(false);
     setState("idle");
   }
-  async function startMic(wakeMode = false) {
+  async function startMic(wakeMode = false, onFinal?: (text: string) => void) {
     if (!navigator.mediaDevices?.getUserMedia) {
       setError(
         "Microfone requer navegador compatível e contexto seguro HTTPS ou localhost.",
@@ -116,6 +116,14 @@ export function useAudio(
         rec.continuous = true;
         rec.onresult = (e) => {
           if (token !== generation.current) return;
+          if (onFinal) {
+            let finalText = "";
+            for (let i = e.resultIndex ?? 0; i < e.results.length; i++)
+              if (e.results[i].isFinal)
+                finalText += e.results[i][0].transcript + " ";
+            if (finalText.trim()) onFinal(finalText.trim());
+            return;
+          }
           let text = "";
           for (let i = 0; i < e.results.length; i++)
             text += e.results[i][0].transcript + " ";
@@ -133,6 +141,7 @@ export function useAudio(
           if (token !== generation.current) return;
           setError(`Transcrição indisponível: ${e.error}. Você pode digitar.`);
           stopMic();
+          setState("error");
         };
         rec.onend = () => {
           if (token === generation.current) stopMic();
@@ -145,8 +154,14 @@ export function useAudio(
         };
         rec.start();
       } else {
+        if (onFinal) {
+          stopMic();
+          setState("error");
+        }
         setError(
-          "Transcrição não suportada neste navegador. O medidor usa áudio real; digite sua mensagem.",
+          onFinal
+            ? "Transcrição não suportada neste navegador; modo de voz desligado. Você pode digitar."
+            : "Transcrição não suportada neste navegador. O medidor usa áudio real; digite sua mensagem.",
         );
       }
     } catch {
@@ -171,13 +186,14 @@ export function useAudio(
     if ("speechSynthesis" in window) speechSynthesis.cancel();
     setState("idle");
   }
-  function speak(text: string, prefs: Prefs["voice"]) {
+  function speak(text: string, prefs: Prefs["voice"], onEnd?: () => void) {
     if (prefs.voiceURI === "saly-espeak:pt-br-f3") {
-      void speakPCM(text, prefs);
+      void speakPCM(text, prefs, onEnd);
       return;
     }
     if (!("speechSynthesis" in window)) {
       setError("Síntese de voz não suportada.");
+      setState("error");
       return;
     }
     stopMic();
@@ -204,7 +220,10 @@ export function useAudio(
       if (version === utteranceVersion.current) setState("speaking");
     };
     u.onend = () => {
-      if (version === utteranceVersion.current) setState("idle");
+      if (version === utteranceVersion.current) {
+        setState("idle");
+        onEnd?.();
+      }
     };
     u.onerror = (e) => {
       if (version !== utteranceVersion.current) return;
@@ -217,7 +236,11 @@ export function useAudio(
     };
     speechSynthesis.speak(u);
   }
-  async function speakPCM(text: string, prefs: Prefs["voice"]) {
+  async function speakPCM(
+    text: string,
+    prefs: Prefs["voice"],
+    onEnd?: () => void,
+  ) {
     stopMic();
     stopSpeech();
     const version = utteranceVersion.current,
@@ -274,6 +297,7 @@ export function useAudio(
         speechContext.current = null;
         void audio.close();
         setState("idle");
+        onEnd?.();
       };
       source.start();
       tick();

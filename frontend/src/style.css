@@ -1875,3 +1875,55 @@ fieldset {
   background: #45bfa86b;
   color: transparent;
 }
+
+/* Smolin additions retain the existing palette and cinematic shell. */
+.knowledge-map {
+  margin: 1.2rem 0;
+}
+.knowledge-map summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.graph-scroll {
+  max-width: 100%;
+  overflow: auto;
+  border: 1px solid #24434a;
+  border-radius: 12px;
+}
+.graph-scroll svg {
+  display: block;
+}
+.graph-scroll g[role="button"] {
+  cursor: pointer;
+}
+.graph-scroll g[role="button"]:focus circle {
+  stroke: white;
+  stroke-width: 4;
+}
+.knowledge-map blockquote {
+  margin: 1rem 0;
+  padding: 0.8rem 1rem;
+  border-left: 2px solid #9ee7db;
+}
+.text-book {
+  max-width: 1000px;
+  margin: auto;
+}
+.text-book article {
+  max-width: 72ch;
+  margin: 2rem auto;
+  font-size: 1.1rem;
+  line-height: 1.9;
+  overflow-wrap: anywhere;
+}
+.text-book select {
+  max-width: 100%;
+}
+@media (max-width: 700px) {
+  .text-book {
+    padding: 1rem;
+  }
+  .text-book article {
+    font-size: 1rem;
+  }
+}

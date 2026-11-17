@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { KnowledgeMap } from "./KnowledgeMap";
 import { smolinError, uploadResponse } from "./smolin_transfer";
 import { api, post } from "./api";
 import { emit } from "./operations";
@@ -10,6 +11,7 @@ type Transfer = {
   progress: number;
   status: string;
   error?: string;
+  resumable?: boolean;
 };
 export function Smolin({
   notify,
@@ -21,21 +23,27 @@ export function Smolin({
   const [docs, setDocs] = useState<any[]>([]),
     [jobs, setJobs] = useState<any[]>([]),
     [transfers, setTransfers] = useState<Transfer[]>([]),
+    [pendingTransfers, setPendingTransfers] = useState<any[]>([]),
+    [documentFilter, setDocumentFilter] = useState(""),
     [query, setQuery] = useState(""),
     [results, setResults] = useState<any[]>([]),
+    [searched, setSearched] = useState(false),
     [detail, setDetail] = useState<any>(null),
     [capabilities, setCapabilities] = useState<any>(null);
   const requests = useRef(new Map<string, XMLHttpRequest>()),
     active = useRef(new Set<string>()),
-    cancelled = useRef(new Set<string>());
+    cancelled = useRef(new Set<string>()),
+    paused = useRef(new Set<string>());
   const refresh = async () => {
     try {
-      const [d, j] = await Promise.all([
+      const [d, j, pendingUploads] = await Promise.all([
         api("/knowledge"),
         api("/knowledge/jobs"),
+        api("/knowledge/uploads"),
       ]);
       setDocs(d);
       setJobs(j);
+      setPendingTransfers(pendingUploads);
       const pending = new Set<string>(
         j
           .filter(
@@ -46,8 +54,19 @@ export function Smolin({
       );
       for (const id of pending)
         emit({ type: "DOCUMENT_PROCESSING_STARTED", id });
-      for (const id of active.current)
-        if (!pending.has(id)) emit({ type: "DOCUMENT_INDEXED", id });
+      for (const id of active.current) {
+        if (!pending.has(id)) {
+          const state = j.find((job: any) => job.id === id)?.status;
+          emit({
+            type: ["ready", "partial"].includes(state)
+              ? "DOCUMENT_INDEXED"
+              : state === "failed"
+                ? "DOCUMENT_PROCESSING_FAILED"
+                : "DOCUMENT_PROCESSING_STOPPED",
+            id,
+          });
+        }
+      }
       active.current = pending;
     } catch (e) {
       notify(
@@ -65,7 +84,8 @@ export function Smolin({
     const timer = setInterval(refresh, 2200);
     return () => {
       clearInterval(timer);
-      for (const id of active.current) emit({ type: "DOCUMENT_INDEXED", id });
+      for (const id of active.current)
+        emit({ type: "DOCUMENT_PROCESSING_STOPPED", id });
     };
   }, []);
   const update = (id: string, patch: Partial<Transfer>) =>
@@ -81,7 +101,7 @@ export function Smolin({
     total = 0,
   ): Promise<any> {
     return new Promise((resolve, reject) => {
-      if (cancelled.current.has(id)) {
+      if (cancelled.current.has(id) || paused.current.has(id)) {
         reject(new Error("Transferência cancelada."));
         return;
       }
@@ -145,13 +165,21 @@ export function Smolin({
       xhr.send(body);
     });
   }
-  async function upload(files: FileList | File[]) {
+  async function upload(files: FileList | File[], resumeSession?: string) {
     for (const file of Array.from(files)) {
-      const id = crypto.randomUUID();
-      let session: string | undefined;
+      const id = resumeSession ?? crypto.randomUUID();
+      paused.current.delete(id);
+      cancelled.current.delete(id);
+      let session: string | undefined = resumeSession;
       setTransfers((items) => [
         ...items,
-        { id, name: file.name, progress: 0, status: "Transferindo" },
+        {
+          id,
+          name: file.name,
+          progress: 0,
+          status: "Transferindo",
+          resumable: file.size > 4 * 1024 * 1024 || Boolean(resumeSession),
+        },
       ]);
       emit({ type: "DOCUMENT_UPLOAD_STARTED", id });
       try {
@@ -160,13 +188,49 @@ export function Smolin({
             `Arquivo acima do limite atual de ${Math.round(capabilities.max_upload_bytes / 1024 / 1024)} MB.`,
           );
         let result: any;
-        if (file.size > 4 * 1024 * 1024) {
-          const initialized = await post("/knowledge/uploads", {
-            name: file.name,
-            size: file.size,
-          });
+        if (file.size > 4 * 1024 * 1024 || resumeSession) {
+          const initialized = resumeSession
+            ? await api(`/knowledge/uploads/${resumeSession}`)
+            : await post("/knowledge/uploads", {
+                name: file.name,
+                size: file.size,
+              });
           session = initialized.id;
-          for (let offset = 0; offset < file.size;) {
+          if (resumeSession) {
+            if (
+              file.name !== initialized.name ||
+              file.size !== initialized.size
+            )
+              throw new Error(
+                "Selecione o mesmo arquivo (nome e tamanho). O temporário foi preservado.",
+              );
+            for (
+              let i = 0, offset = 0;
+              offset < initialized.offset;
+              i++, offset += initialized.chunk_bytes
+            ) {
+              const data = await file
+                .slice(
+                  offset,
+                  Math.min(
+                    initialized.offset,
+                    offset + initialized.chunk_bytes,
+                  ),
+                )
+                .arrayBuffer();
+              const actual = Array.from(
+                new Uint8Array(await crypto.subtle.digest("SHA-256", data)),
+                (b) => b.toString(16).padStart(2, "0"),
+              ).join("");
+              if (actual !== initialized.block_sha256[i])
+                throw new Error(
+                  "O arquivo selecionado difere dos blocos confirmados. Escolha o original ou cancele o temporário.",
+                );
+            }
+          }
+          for (let offset = initialized.offset ?? 0; offset < file.size;) {
+            if (paused.current.has(id) || cancelled.current.has(id))
+              throw new Error("Envio interrompido.");
             const end = Math.min(file.size, offset + initialized.chunk_bytes);
             const acknowledged = await request(
               id,
@@ -199,11 +263,15 @@ export function Smolin({
         });
       } catch (error) {
         update(id, {
-          status: cancelled.current.has(id) ? "Cancelada" : "Falha",
-          error: smolinError(error),
+          status: paused.current.has(id)
+            ? "Pausada — selecione o mesmo arquivo para retomar"
+            : cancelled.current.has(id)
+              ? "Cancelada"
+              : "Falha — envio em blocos pode ser retomado abaixo",
+          error: paused.current.has(id) ? undefined : smolinError(error),
         });
       } finally {
-        if (session)
+        if (session && cancelled.current.has(id))
           await api(`/knowledge/uploads/${session}`, {
             method: "DELETE",
           }).catch(() => {});
@@ -265,16 +333,62 @@ export function Smolin({
             {t.status} · {t.progress}% transferido {t.error}
           </small>
           {requests.current.has(t.id) && (
-            <button
-              onClick={() => {
-                cancelled.current.add(t.id);
-                requests.current.get(t.id)?.abort();
-              }}
-            >
-              Cancelar transferência
-            </button>
+            <>
+              {t.resumable && (
+                <button
+                  onClick={() => {
+                    paused.current.add(t.id);
+                    requests.current.get(t.id)?.abort();
+                  }}
+                >
+                  Pausar transferência
+                </button>
+              )}
+              <button
+                onClick={() => {
+                  cancelled.current.add(t.id);
+                  requests.current.get(t.id)?.abort();
+                }}
+              >
+                Cancelar transferência
+              </button>
+            </>
           )}
         </div>
+      ))}
+      {pendingTransfers.map((t) => (
+        <section className="card" key={t.id}>
+          <strong>Transferência preservada: {t.name}</strong>
+          <p>
+            {t.offset.toLocaleString("pt-BR")} de{" "}
+            {t.size.toLocaleString("pt-BR")} bytes confirmados. Expira após 24
+            horas sem atividade.
+          </p>
+          <label>
+            Retomar selecionando o mesmo arquivo
+            <input
+              type="file"
+              aria-label={`Retomar ${t.name}`}
+              onChange={(e) => {
+                if (e.target.files?.length) void upload(e.target.files, t.id);
+                e.target.value = "";
+              }}
+            />
+          </label>
+          <button
+            className="danger"
+            onClick={async () => {
+              if (
+                !confirm("Descartar os blocos desta transferência incompleta?")
+              )
+                return;
+              await api(`/knowledge/uploads/${t.id}`, { method: "DELETE" });
+              await refresh();
+            }}
+          >
+            Descartar transferência
+          </button>
+        </section>
       ))}
       <div className="library-stats">
         <span>{docs.length} documentos</span>
@@ -296,8 +410,15 @@ export function Smolin({
           e.preventDefault();
           emit({ type: "TOOL_STARTED", id: "search" });
           try {
+            setSearched(true);
             setResults(
-              await api("/knowledge/search?q=" + encodeURIComponent(query)),
+              await api(
+                "/knowledge/search?q=" +
+                  encodeURIComponent(query) +
+                  (documentFilter
+                    ? "&document_id=" + encodeURIComponent(documentFilter)
+                    : ""),
+              ),
             );
           } catch (e) {
             notify(
@@ -317,8 +438,34 @@ export function Smolin({
           required
           placeholder="Pesquisar no acervo…"
         />
+        <select
+          aria-label="Pesquisar em livro específico"
+          value={documentFilter}
+          onChange={(e) => setDocumentFilter(e.target.value)}
+        >
+          <option value="">Todo o acervo</option>
+          {docs.map((d) => (
+            <option key={d.id} value={d.id}>
+              {d.title || d.name}
+            </option>
+          ))}
+        </select>
         <button>Pesquisar</button>
       </form>
+      <p>
+        Busca textual
+        {capabilities?.local_lsa
+          ? " e associações estatísticas LSA locais (até 1.000 trechos; primeiro ajuste pode demorar)"
+          : ""}
+        . Verifique a relevância das fontes recuperadas.
+      </p>
+      {searched && !results.length && (
+        <p role="status">
+          Nenhum trecho recuperado para esta consulta. Confira o livro
+          escolhido, aguarde a indexação ou tente outros termos; isso não
+          comprova ausência de informação no original.
+        </p>
+      )}
       {results.map((r) => (
         <article className="card" key={r.chunk_id}>
           <a href={r.url} target="_blank" rel="noreferrer">
@@ -330,8 +477,13 @@ export function Smolin({
           <small>Referência: {r.chunk_id}</small>
         </article>
       ))}
+      <KnowledgeMap notify={notify} />
       {jobs
-        .filter((j) => ["processing", "queued"].includes(j.status))
+        .filter((j) =>
+          ["processing", "queued", "paused", "failed", "cancelled"].includes(
+            j.status,
+          ),
+        )
         .map((j) => (
           <div className="card" key={j.id}>
             <small>
@@ -339,9 +491,40 @@ export function Smolin({
               {docs.find((d) => d.id === j.document_id)?.name} ·{" "}
               {j.processed_pages || 0} partes indexadas
             </small>
+            <p>
+              {j.status} {j.error}
+            </p>
             <progress max="100" value={j.progress} />
+            {["processing", "queued"].includes(j.status) ? (
+              <button
+                onClick={async () => {
+                  try {
+                    await post(`/knowledge/jobs/${j.id}/pause`);
+                    await refresh();
+                  } catch (e) {
+                    notify((e as Error).message);
+                  }
+                }}
+              >
+                Pausar processamento
+              </button>
+            ) : (
+              <button
+                onClick={async () => {
+                  try {
+                    await post(`/knowledge/jobs/${j.id}/resume`);
+                    await refresh();
+                  } catch (e) {
+                    notify((e as Error).message);
+                  }
+                }}
+              >
+                Retomar processamento
+              </button>
+            )}
             <button
               className="secondary"
+              disabled={j.status === "cancelled"}
               onClick={async () => {
                 await post(`/knowledge/jobs/${j.id}/cancel`);
                 await refresh();
@@ -364,7 +547,7 @@ export function Smolin({
               {d.unit === "page" || !d.unit
                 ? "páginas"
                 : "seções/quadros/segmentos"}{" "}
-              · {d.chunks} trechos · vetores: {d.embedding_status}
+              · {d.chunks} trechos · encoder remoto: {d.embedding_status}
             </small>
             <div className="toolbar">
               <button
@@ -383,6 +566,14 @@ export function Smolin({
               >
                 Detalhes e texto
               </button>
+              {["epub", "text", "html", "word", "opendocument"].includes(
+                d.kind,
+              ) &&
+                d.chunks > 0 && (
+                  <Link className="file-button" to={`/knowledge/${d.id}/text`}>
+                    Ler texto por capítulos
+                  </Link>
+                )}
               {d.mime === "application/pdf" && (
                 <Link className="file-button" to={`/knowledge/${d.id}/read`}>
                   Ler PDF como livro
@@ -497,6 +688,27 @@ export function Smolin({
                   <code>bash scripts/install-transcription.sh</code>. Metadados
                   e OCR de quadros não substituem a transcrição.
                 </p>
+              )}
+            {d.mime === "application/pdf" &&
+              ["ocr_required", "partial"].includes(d.status) && (
+                <button
+                  onClick={async () => {
+                    if (
+                      !confirm(
+                        "OCR usa CPU intensivamente: até 40 páginas por operação. O original será preservado. Continuar?",
+                      )
+                    )
+                      return;
+                    try {
+                      await post(`/knowledge/${d.id}/ocr`);
+                      await refresh();
+                    } catch (e) {
+                      notify((e as Error).message);
+                    }
+                  }}
+                >
+                  Executar OCR local do PDF
+                </button>
               )}
             {d.status === "ocr_required" && (
               <p>

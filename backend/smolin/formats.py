@@ -2,6 +2,7 @@
 
 import codecs
 import mimetypes
+import posixpath
 import re
 import zipfile
 from html.parser import HTMLParser
@@ -183,6 +184,8 @@ def extract_package(path, kind, max_pages):
             return [int(part) if part.isdigit() else part for part in re.split(r"(\d+)", name)]
 
         pages = []
+        title = author = ""
+        epub_spine = False
         if kind == "word":
             parts = [("Documento", "word/document.xml")]
         elif kind == "slides":
@@ -222,12 +225,48 @@ def extract_package(path, kind, max_pages):
         elif kind == "opendocument":
             parts = [("Documento", "content.xml")]
         elif kind == "epub":
-            # Read HTML sections inside the bounded ZIP, never execute scripts or fetch assets.
-            parts = [
-                (name, name)
-                for name in sorted(names, key=natural)
-                if name.lower().endswith((".html", ".htm", ".xhtml"))
-            ]
+            parts = []
+            if "META-INF/container.xml" in names:
+                container = xml(read("META-INF/container.xml"))
+                rootfile = next(
+                    (
+                        e.attrib.get("full-path")
+                        for e in container.iter()
+                        if local(e.tag) == "rootfile"
+                    ),
+                    None,
+                )
+                if not rootfile or rootfile not in names:
+                    raise ValueError("EPUB sem pacote OPF válido")
+                package = xml(read(rootfile))
+                title = next((e.text or "" for e in package.iter() if local(e.tag) == "title"), "")[
+                    :500
+                ]
+                author = next(
+                    (e.text or "" for e in package.iter() if local(e.tag) == "creator"), ""
+                )[:500]
+                manifest = {
+                    e.attrib.get("id"): e.attrib for e in package.iter() if local(e.tag) == "item"
+                }
+                for item in package.iter():
+                    if local(item.tag) != "itemref" or item.attrib.get("linear") == "no":
+                        continue
+                    entry = manifest.get(item.attrib.get("idref"), {})
+                    href = entry.get("href", "").split("#")[0]
+                    name = posixpath.normpath(posixpath.join(posixpath.dirname(rootfile), href))
+                    if ":" in href or name.startswith(("/", "../")) or name not in names:
+                        raise ValueError("EPUB com referência externa/ausente no spine")
+                    if entry.get("media-type") in {"application/xhtml+xml", "text/html"}:
+                        parts.append((name, name))
+                epub_spine = bool(parts)
+                if not parts:
+                    raise ValueError("EPUB sem capítulos legíveis no spine")
+            else:
+                parts = [
+                    (name, name)
+                    for name in sorted(names, key=natural)
+                    if name.lower().endswith((".html", ".htm", ".xhtml"))
+                ]
         else:
             parts = []
             pages = [
@@ -243,13 +282,23 @@ def extract_package(path, kind, max_pages):
         for label, name in parts:
             raw = read(name)
             content = html_text(raw.decode("utf-8-sig")) if kind == "epub" else paragraphs(raw)
+            if kind == "epub":
+                heading = re.search(
+                    r"<(?:h1|h2|title)\b[^>]*>(.*?)</(?:h1|h2|title)>",
+                    raw.decode("utf-8-sig"),
+                    re.IGNORECASE | re.DOTALL,
+                )
+                if heading:
+                    label = html_text(heading.group(1))[:200] or label
             pages.append({"page": len(pages) + 1, "label": label, "content": content})
         if sum(len(p["content"]) for p in pages) > 2_000_000:
             raise ValueError("Texto acima do limite")
         return {
             "pages": pages,
-            "title": "",
-            "author": "",
+            "title": title,
+            "author": author,
             "unit": "section",
-            "notice": "Texto extraído; fórmulas, macros e scripts não são executados. EPUB usa ordem dos arquivos; diagramação original permanece no download.",
+            "notice": "EPUB: capítulos na ordem declarada no spine; leitura textual, original disponível para download."
+            if epub_spine
+            else "Texto extraído sem executar scripts/macros. Sem spine EPUB válido, seções seguem os nomes dos arquivos; diagramação original no download.",
         }

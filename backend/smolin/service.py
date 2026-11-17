@@ -10,13 +10,15 @@ import tempfile
 from pathlib import Path
 
 import httpx
+import numpy as np
 from fastapi import HTTPException
 from sqlalchemy import delete, insert, select, text
 
 from .. import storage as store
+from .catalog import documents as catalog
 from .formats import classify, safe_name
 
-PIPELINE = "smolin-files-v3"
+PIPELINE = "smolin-library-v4"
 SEM = asyncio.Semaphore(max(1, min(2, int(os.environ.get("SALY_DOC_WORKERS", "1")))))
 TASKS = set()
 JOB_TASKS = {}
@@ -91,69 +93,93 @@ def chunk_page(value, size=2800, overlap=350):
         start = max(start + 1, end - overlap)
 
 
+def checkpoint(job_id):
+    if not re.fullmatch(r"[a-f0-9]{32}", job_id):
+        raise ValueError("Identificador de processamento inválido")
+    folder = store.DATA / "smolin-checkpoints"
+    folder.mkdir(parents=True, exist_ok=True, mode=0o700)
+    return folder / (job_id + ".json")
+
+
 async def process(key, job_id):
     async with SEM:
         job = store.get("document_jobs", job_id)
-        if not job or job.get("cancelled"):
+        if not job or job.get("cancelled") or job.get("status") == "paused":
             return
         doc = store.get("documents", key)
         if not doc:
             return
-        store.save("document_jobs", {**job, "status": "processing", "progress": 0}, job_id)
+        store.save(
+            "document_jobs",
+            {**job, "status": "processing", "progress": job.get("progress", 0)},
+            job_id,
+        )
         store.save("documents", {**doc, "status": "processing"}, key)
         try:
-            raw = original(key)
             kind = doc.get("kind") or ("pdf" if doc["mime"] == "application/pdf" else "text")
             transcription = job.get("operation") == "transcribe"
-            store.DATA.mkdir(parents=True, exist_ok=True, mode=0o700)
-            with tempfile.TemporaryDirectory(dir=store.DATA) as folder:
-                file = Path(folder) / "input.bin"
-                file.write_bytes(raw)
-                file.chmod(0o600)
-                command = (
-                    [sys.executable, "-m", "backend.smolin.transcription", str(file)]
-                    if transcription
-                    else [
-                        sys.executable,
-                        "-m",
-                        "backend.smolin.extract",
-                        str(file),
-                        str(int(os.environ.get("SALY_MAX_PAGES", "2000"))),
-                        kind,
-                    ]
-                )
-                environment = {
-                    "PATH": os.defpath,
-                    "LANG": "C.UTF-8",
-                    "OMP_NUM_THREADS": "2",
-                    "OPENBLAS_NUM_THREADS": "1",
-                }
-                if transcription and os.environ.get("SALY_SMOLIN_WHISPER_MODEL_PATH"):
-                    environment["SALY_SMOLIN_WHISPER_MODEL_PATH"] = os.environ[
-                        "SALY_SMOLIN_WHISPER_MODEL_PATH"
-                    ]
-                proc = await asyncio.create_subprocess_exec(
-                    *command,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.DEVNULL,
-                    env=environment,
-                    start_new_session=True,
-                )
-                try:
-                    out, _ = await asyncio.wait_for(
-                        proc.communicate(), 600 if transcription else 180
+            saved = checkpoint(job_id)
+            if saved.is_file():
+                parsed = json.loads(saved.read_text())
+            else:
+                raw = original(key)
+                store.DATA.mkdir(parents=True, exist_ok=True, mode=0o700)
+                with tempfile.TemporaryDirectory(prefix="smolin-worker-", dir=store.DATA) as folder:
+                    file = Path(folder) / "input.bin"
+                    file.write_bytes(raw)
+                    file.chmod(0o600)
+                    command = (
+                        [sys.executable, "-m", "backend.smolin.transcription", str(file)]
+                        if transcription
+                        else [
+                            sys.executable,
+                            "-m",
+                            "backend.smolin.extract",
+                            str(file),
+                            str(int(os.environ.get("SALY_MAX_PAGES", "2000"))),
+                            "pdf_ocr" if job.get("operation") == "ocr" else kind,
+                        ]
                     )
-                except (TimeoutError, asyncio.CancelledError):
-                    if proc.returncode is None:
+                    environment = {
+                        "PATH": os.defpath,
+                        "LANG": "C.UTF-8",
+                        "OMP_NUM_THREADS": "2",
+                        "OPENBLAS_NUM_THREADS": "1",
+                    }
+                    if transcription and os.environ.get("SALY_SMOLIN_WHISPER_MODEL_PATH"):
+                        environment["SALY_SMOLIN_WHISPER_MODEL_PATH"] = os.environ[
+                            "SALY_SMOLIN_WHISPER_MODEL_PATH"
+                        ]
+                    proc = await asyncio.create_subprocess_exec(
+                        *command,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.DEVNULL,
+                        env=environment,
+                        start_new_session=True,
+                    )
+                    try:
+                        out, _ = await asyncio.wait_for(
+                            proc.communicate(), 600 if transcription else 180
+                        )
+                    except (TimeoutError, asyncio.CancelledError):
+                        if proc.returncode is None:
+                            try:
+                                os.killpg(proc.pid, signal.SIGKILL)
+                            except ProcessLookupError:
+                                pass
+                        await proc.wait()
+                        raise
+                    if proc.returncode or len(out) > 16 * 1024 * 1024:
                         try:
-                            os.killpg(proc.pid, signal.SIGKILL)
-                        except ProcessLookupError:
-                            pass
-                    await proc.wait()
-                    raise
-                if proc.returncode or len(out) > 16 * 1024 * 1024:
-                    raise ValueError("Extração não concluída")
-                parsed = json.loads(out)
+                            message = json.loads(out).get("error", "Extração não concluída")
+                        except (ValueError, AttributeError):
+                            message = "Extração não concluída dentro dos limites"
+                        raise ValueError(message)
+                    parsed = json.loads(out)
+                temporary = saved.with_suffix(".tmp")
+                temporary.write_text(json.dumps(parsed, ensure_ascii=False))
+                temporary.chmod(0o600)
+                temporary.replace(saved)
             if transcription:
                 old_frames = [p for p in doc.get("pages", []) if p.get("method") != "whisper_local"]
                 if doc.get("kind") == "video":
@@ -165,12 +191,21 @@ async def process(key, job_id):
                     parsed["notice"] = (
                         doc.get("interpretation_notice", "") + " " + parsed.get("notice", "")
                     )
-            with store.db() as c:
-                c.execute(delete(store.chunks).where(store.chunks.c.document_id == key))
+            current = store.get("document_jobs", job_id)
+            if not current.get("indexing_started"):
+                with store.transaction():
+                    with store.db() as c:
+                        c.execute(delete(store.chunks).where(store.chunks.c.document_id == key))
+                    current = store.save(
+                        "document_jobs",
+                        {**current, "indexing_started": True, "processed_pages": 0},
+                        job_id,
+                    )
+            completed_pages = current.get("processed_pages", 0)
             total = len(parsed["pages"])
             empty = []
-            count = 0
-            embedding_error = False
+            count = current.get("chunk_count", 0)
+            embedding_error = current.get("embedding_error", False)
             prefs = store.setting("preferences", {})
             use_vectors = embedding_provider.configured and prefs.get("privacy", {}).get(
                 "remoteConsent", False
@@ -181,6 +216,8 @@ async def process(key, job_id):
                     return
                 if not page["content"].strip():
                     empty.append(page["page"])
+                if page["page"] <= completed_pages:
+                    continue
                 parts = list(chunk_page(page["content"]))
                 vectors = None
                 if use_vectors and parts:
@@ -188,32 +225,44 @@ async def process(key, job_id):
                         vectors = await embedding_provider.encode(parts)
                     except (httpx.HTTPError, ValueError, KeyError):
                         embedding_error = True
-                with store.db() as c:
-                    for position, part in enumerate(parts):
+                with store.transaction():
+                    with store.db() as c:
                         c.execute(
-                            insert(store.chunks).values(
-                                id=hashlib.sha256(
-                                    f"{key}:{page['page']}:{position}:{part}".encode()
-                                ).hexdigest(),
-                                document_id=key,
-                                page=page["page"],
-                                position=position,
-                                content=part,
-                                embedding=vectors[position] if vectors else None,
-                                embedding_version=embedding_provider.version if vectors else None,
+                            delete(store.chunks).where(
+                                store.chunks.c.document_id == key,
+                                store.chunks.c.page == page["page"],
                             )
                         )
+                    for position, part in enumerate(parts):
+                        with store.db() as c:
+                            c.execute(
+                                insert(store.chunks).values(
+                                    id=hashlib.sha256(
+                                        f"{key}:{page['page']}:{position}:{part}".encode()
+                                    ).hexdigest(),
+                                    document_id=key,
+                                    page=page["page"],
+                                    position=position,
+                                    content=part,
+                                    embedding=vectors[position] if vectors else None,
+                                    embedding_version=embedding_provider.version
+                                    if vectors
+                                    else None,
+                                )
+                            )
                         count += 1
-                store.save(
-                    "document_jobs",
-                    {
-                        **current,
-                        "progress": round(page["page"] / max(1, total) * 100),
-                        "processed_pages": page["page"],
-                        "status": "processing",
-                    },
-                    job_id,
-                )
+                    store.save(
+                        "document_jobs",
+                        {
+                            **current,
+                            "progress": round(page["page"] / max(1, total) * 100),
+                            "processed_pages": page["page"],
+                            "status": "processing",
+                            "chunk_count": count,
+                            "embedding_error": embedding_error,
+                        },
+                        job_id,
+                    )
                 await asyncio.sleep(0)
             current_job = store.get("document_jobs", job_id)
             if not current_job or current_job.get("cancelled") or not store.get("documents", key):
@@ -244,6 +293,7 @@ async def process(key, job_id):
                     "author": parsed["author"],
                     "empty_pages": empty,
                     "chunks": count,
+                    "text_size": sum(len(p["content"].encode()) for p in parsed["pages"]),
                     "content": "\n".join(p["content"] for p in parsed["pages"]),
                     "embedding_status": "error"
                     if embedding_error
@@ -260,10 +310,19 @@ async def process(key, job_id):
                 {**store.get("document_jobs", job_id), "status": state, "progress": 100},
                 job_id,
             )
+            saved.unlink(missing_ok=True)
+            from .intelligence import invalidate
+
+            invalidate()
             store.audit("document", "Documento processado: " + key + " · " + state)
         except asyncio.CancelledError:
             raise
-        except Exception:  # noqa: BLE001 - sanitize errors at the untrusted operation boundary
+        except Exception as error:  # noqa: BLE001 - sanitized worker errors only
+            reason = (
+                str(error)[:300]
+                if isinstance(error, ValueError)
+                else "Falha interna; tente retomar ou reprocessar."
+            )
             if store.get("documents", key):
                 store.save(
                     "documents",
@@ -280,7 +339,7 @@ async def process(key, job_id):
                     {
                         **store.get("document_jobs", job_id),
                         "status": "failed",
-                        "error": "Não foi possível interpretar dentro dos limites. O original continua disponível para abrir ou baixar; confira formato, páginas, faixa de áudio e motores instalados.",
+                        "error": reason + " O original continua disponível para download.",
                     },
                     job_id,
                 )
@@ -288,10 +347,18 @@ async def process(key, job_id):
 
 
 def start(key, job_id):
+    existing = JOB_TASKS.get(job_id)
+    if existing and not existing.done():
+        return
     task = asyncio.create_task(process(key, job_id))
     TASKS.add(task)
     JOB_TASKS[job_id] = task
-    task.add_done_callback(lambda _: JOB_TASKS.pop(job_id, None))
+
+    def finished(completed):
+        if JOB_TASKS.get(job_id) is completed:
+            JOB_TASKS.pop(job_id, None)
+
+    task.add_done_callback(finished)
     task.add_done_callback(TASKS.discard)
 
 
@@ -305,10 +372,10 @@ def _upload(raw, name):
     if len(raw) > limit:
         raise HTTPException(413, "Arquivo excede o limite configurado")
     digest = hashlib.sha256(raw).hexdigest()
-    duplicate = next((d for d in store.all_records("documents") if d["sha256"] == digest), None)
+    duplicate = next((d for d in catalog() if d["sha256"] == digest), None)
     if duplicate:
         return {"id": duplicate["id"], "duplicate": True, "status": duplicate["status"]}
-    if len(store.all_records("documents")) >= int(os.environ.get("SALY_MAX_DOCUMENTS", "50")):
+    if len(catalog()) >= int(os.environ.get("SALY_MAX_DOCUMENTS", "50")):
         raise HTTPException(413, "Acervo atingiu o limite de documentos")
     filename = safe_name(name)
     try:
@@ -321,8 +388,8 @@ def _upload(raw, name):
             "Conteúdo inválido para o formato; texto precisa ser UTF-8/UTF-16 válido e PDF precisa ter assinatura PDF",
         ) from None
     used = sum(
-        d.get("file_size", 0) + len(d.get("content", "").encode()) * 3 + d.get("chunks", 0) * 8000
-        for d in store.all_records("documents")
+        (d.get("file_size") or 0) + (d.get("text_size") or 0) * 3 + (d.get("chunks") or 0) * 8000
+        for d in catalog()
     )
     if used + len(raw) > int(os.environ.get("SALY_MAX_TOTAL_MB", "200")) * 1024 * 1024:
         raise HTTPException(413, "Capacidade configurada do acervo atingida")
@@ -373,11 +440,17 @@ def source_url(doc, page):
 def source_metadata(doc, page):
     item = next((p for p in doc.get("pages", []) if p["page"] == page), {})
     return {
-        key: item[key] for key in ("start_seconds", "end_seconds", "label", "method") if key in item
+        "title": doc.get("title") or doc.get("name"),
+        "author": doc.get("author") or None,
+        **{
+            key: item[key]
+            for key in ("start_seconds", "end_seconds", "label", "chapter", "method")
+            if key in item
+        },
     }
 
 
-def lexical(query, limit=8):
+def lexical(query, limit=8, document_id=None):
     tokens = re.findall(r"\w+", query, re.UNICODE)[:20]
     if not tokens:
         return []
@@ -387,9 +460,9 @@ def lexical(query, limit=8):
             rows = (
                 c.execute(
                     text(
-                        "SELECT c.* FROM smolin_fts f JOIN document_chunks c ON c.id=f.id WHERE smolin_fts MATCH :q ORDER BY rank LIMIT :lim"
+                        "SELECT c.* FROM smolin_fts f JOIN document_chunks c ON c.id=f.id WHERE smolin_fts MATCH :q AND (:doc IS NULL OR c.document_id = :doc) ORDER BY rank LIMIT :lim"
                     ),
-                    {"q": q, "lim": limit},
+                    {"q": q, "lim": limit, "doc": document_id},
                 )
                 .mappings()
                 .all()
@@ -398,9 +471,9 @@ def lexical(query, limit=8):
             rows = (
                 c.execute(
                     text(
-                        "SELECT * FROM document_chunks WHERE to_tsvector('portuguese',content) @@ plainto_tsquery('portuguese',:q) LIMIT :lim"
+                        "SELECT * FROM document_chunks WHERE to_tsvector('portuguese',content) @@ plainto_tsquery('portuguese',:q) AND (:doc IS NULL OR document_id = :doc) LIMIT :lim"
                     ),
-                    {"q": query, "lim": limit},
+                    {"q": query, "lim": limit, "doc": document_id},
                 )
                 .mappings()
                 .all()
@@ -425,8 +498,36 @@ def lexical(query, limit=8):
     return results
 
 
-async def search(query):
-    results = lexical(query)
+async def search(query, document_id=None):
+    results = lexical(query, document_id=document_id)
+    if os.environ.get("SALY_LOCAL_LSA", "1") == "1":
+        from .intelligence import semantic
+
+        try:
+            similar, _ = await asyncio.to_thread(semantic, query, document_id)
+            # Keep lexical matches; add real local latent associations, clearly labelled.
+            for row in similar:
+                if row["id"] in {result["chunk_id"] for result in results}:
+                    continue
+                doc = store.get("documents", row["document_id"])
+                if doc and doc.get("status") in {"ready", "partial", "legacy_text_only"}:
+                    results.append(
+                        {
+                            "chunk_id": row["id"],
+                            "id": doc["id"],
+                            "name": doc["name"],
+                            "page": row["page"],
+                            "position": row["position"],
+                            "content": row["content"],
+                            "source": "smolin",
+                            "url": source_url(doc, row["page"]),
+                            "retrieval": "local_lsa",
+                            "semantic_score": row["semantic_score"],
+                            **source_metadata(doc, row["page"]),
+                        }
+                    )
+        except (OSError, ValueError, np.linalg.LinAlgError):
+            store.audit("lsa_error", "Índice LSA indisponível; busca textual preservada")
     if embedding_provider.configured and store.setting("preferences", {}).get("privacy", {}).get(
         "remoteConsent", False
     ):
@@ -438,6 +539,9 @@ async def search(query):
                         c.execute(
                             select(store.chunks)
                             .where(store.chunks.c.embedding_version == embedding_provider.version)
+                            .where(
+                                store.chunks.c.document_id == document_id if document_id else True
+                            )
                             .order_by(store.chunks.c.embedding.cosine_distance(vector))
                             .limit(8)
                         )
@@ -448,8 +552,10 @@ async def search(query):
                 with store.db() as c:
                     rows = (
                         c.execute(
-                            select(store.chunks).where(
-                                store.chunks.c.embedding_version == embedding_provider.version
+                            select(store.chunks)
+                            .where(store.chunks.c.embedding_version == embedding_provider.version)
+                            .where(
+                                store.chunks.c.document_id == document_id if document_id else True
                             )
                         )
                         .mappings()
@@ -468,7 +574,11 @@ async def search(query):
                 if row["id"] in [r["chunk_id"] for r in results]:
                     continue
                 d = store.get("documents", row["document_id"])
-                if d and d.get("status") in ("ready", "partial", "legacy_text_only"):
+                if (
+                    d
+                    and (not document_id or d["id"] == document_id)
+                    and d.get("status") in ("ready", "partial", "legacy_text_only")
+                ):
                     results.append(
                         {
                             "chunk_id": row["id"],
@@ -490,8 +600,13 @@ async def search(query):
 
 
 def delete_document(key):
+    from .intelligence import invalidate
+
+    invalidate()
     for job in store.all_records("document_jobs"):
         if job["document_id"] == key:
+            checkpoint(job["id"]).unlink(missing_ok=True)
+            checkpoint(job["id"]).with_suffix(".tmp").unlink(missing_ok=True)
             store.save(
                 "document_jobs", {**job, "cancelled": True, "status": "cancelled"}, job["id"]
             )

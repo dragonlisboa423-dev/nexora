@@ -1,5 +1,6 @@
 """Small authenticated resumable requests avoid proxy limits on large originals."""
 
+import hashlib
 import re
 from datetime import UTC, datetime, timedelta
 
@@ -53,7 +54,7 @@ def start(body: Start, _=Depends(owner)):
     with store.transaction():
         cleanup()
         active = store.all_records("smolin_uploads")
-        used = sum(d.get("file_size", 0) for d in store.all_records("documents")) + sum(
+        used = sum((d.get("file_size") or 0) for d in service.catalog()) + sum(
             d["size"] for d in active
         )
         import os
@@ -71,6 +72,42 @@ def start(body: Start, _=Depends(owner)):
             pass
         path(record["id"]).chmod(0o600)
     return {**record, "chunk_bytes": CHUNK}
+
+
+@router.get("")
+def list_transfers(_=Depends(owner)):
+    cleanup()
+    return store.all_records("smolin_uploads")
+
+
+@router.get("/{key}")
+def transfer_status(key: str, _=Depends(owner)):
+    record = store.get("smolin_uploads", key)
+    if not record or not path(key).is_file():
+        raise HTTPException(404, "Transferência ausente ou expirada")
+    # Validate every confirmed byte when reselecting a file, not just its filename.
+    digest = hashlib.sha256()
+    with path(key).open("rb") as source:
+        remaining = record["offset"]
+        while remaining:
+            part = source.read(min(2 * 1024 * 1024, remaining))
+            if not part:
+                raise HTTPException(409, "Temporário incompleto; reinicie o envio")
+            digest.update(part)
+            remaining -= len(part)
+    blocks = []
+    with path(key).open("rb") as source:
+        remaining = record["offset"]
+        while remaining:
+            part = source.read(min(CHUNK, remaining))
+            blocks.append(hashlib.sha256(part).hexdigest())
+            remaining -= len(part)
+    return {
+        **record,
+        "prefix_sha256": digest.hexdigest(),
+        "block_sha256": blocks,
+        "chunk_bytes": CHUNK,
+    }
 
 
 @router.put("/{key}")

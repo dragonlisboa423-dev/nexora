@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 export function PwaUpdate() {
+  const [warning, setWarning] = useState("");
   const [waiting, setWaiting] = useState<ServiceWorker | null>(null),
     [install, setInstall] = useState<any>(null);
   useEffect(() => {
@@ -21,7 +22,11 @@ export function PwaUpdate() {
           });
         });
       })
-      .catch(() => {});
+      .catch(() =>
+        setWarning(
+          "Não foi possível preparar o acesso offline. Verifique HTTPS, espaço local e permissões do navegador.",
+        ),
+      );
     const listener = (e: Event) => {
       e.preventDefault();
       setInstall(e);
@@ -34,6 +39,12 @@ export function PwaUpdate() {
   }, []);
   return (
     <>
+      {warning && (
+        <div className="notice" role="status">
+          {warning}
+          <button onClick={() => setWarning("")}>Fechar aviso</button>
+        </div>
+      )}
       {waiting && (
         <div className="notice" role="status">
           Uma nova versão está disponível.

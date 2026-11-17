@@ -12,10 +12,36 @@ from .media_text import extract_media, ocr
 
 
 def extract(path, maximum, kind):
+    if kind == "pdf_ocr":
+        from .ocr_pdf import extract_pdf_ocr
+
+        return extract_pdf_ocr(path, maximum)
     if kind == "pdf":
         reader = PdfReader(path)
         if reader.is_encrypted or len(reader.pages) > maximum:
-            raise ValueError("PDF protegido ou extenso demais")
+            raise ValueError(
+                "PDF protegido por senha"
+                if reader.is_encrypted
+                else f"PDF com {len(reader.pages)} páginas excede o limite configurado de {maximum}; o leitor original continua disponível"
+            )
+        chapters = []
+
+        def outline(items, depth=0):
+            if depth > 10:
+                return
+            for item in items[:1000]:
+                if isinstance(item, list):
+                    outline(item, depth + 1)
+                else:
+                    try:
+                        number = reader.get_destination_page_number(item)
+                        if number is not None and number >= 0:
+                            chapters.append((number + 1, str(item.title)[:200]))
+                    except (ValueError, AttributeError, KeyError):
+                        pass
+
+        outline(reader.outline)
+        chapters.sort(key=lambda pair: pair[0])
         pages = []
         total = 0
         for number, page in enumerate(reader.pages, 1):
@@ -23,7 +49,10 @@ def extract(path, maximum, kind):
             total += len(content)
             if total > 2_000_000:
                 raise ValueError("Texto excede o limite")
-            pages.append({"page": number, "content": content})
+            labels = [label for start, label in chapters if start <= number]
+            pages.append(
+                {"page": number, "content": content, **({"chapter": labels[-1]} if labels else {})}
+            )
         meta = reader.metadata or {}
         return {
             "pages": pages,
@@ -61,11 +90,13 @@ if __name__ == "__main__":
                 ensure_ascii=False,
             )
         )
-    except Exception:  # noqa: BLE001 - no input/parser secrets in worker output
+    except Exception as error:  # noqa: BLE001 - no input/parser secrets in worker output
         print(
             json.dumps(
                 {
-                    "error": "Não foi possível extrair conteúdo dentro dos limites; o original permanece disponível."
+                    "error": str(error)[:250]
+                    if isinstance(error, ValueError)
+                    else "Arquivo corrompido/incompatível, motor ausente ou limite de processamento; original preservado."
                 }
             )
         )

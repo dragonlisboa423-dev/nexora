@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import OfflinePlanning, { planningSnapshot } from "./OfflinePlanning";
+import OfflineHistory from "./OfflineHistory";
 import OfflineLibrary from "./OfflineLibrary";
 import { synchronizeBooks } from "./books";
 import PersonalOffline from "./PersonalOffline";
@@ -267,6 +268,7 @@ export default function OfflineWorkspace() {
             ["personal", "Compras e Espaço locais"],
             ["books", "Livros guardados"],
             ["planning", "Agenda e alarmes guardados"],
+            ["history", "Histórico guardado"],
             ["settings", "Cofre e sincronização"],
           ].map(([id, label]) => (
             <a
@@ -942,6 +944,14 @@ export default function OfflineWorkspace() {
                   online={online}
                   fail={setError}
                   enable={enablePersonal}
+                />
+              )}
+              {tab === "history" && (
+                <OfflineHistory
+                  state={state}
+                  online={online}
+                  mutate={exclusive}
+                  notify={setError}
                 />
               )}
               {tab === "settings" && (

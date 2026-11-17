@@ -159,6 +159,20 @@ with sync_playwright() as p:
         }
     )
     page.get_by_role("heading", name="biologia.md", exact=True).wait_for()
+    # Upload acknowledgement precedes background indexing: wait for actual readiness.
+    for _ in range(200):
+        document = next(
+            (
+                d
+                for d in context.request.get("http://127.0.0.1:8001/api/knowledge").json()
+                if d["name"] == "biologia.md"
+            ),
+            None,
+        )
+        if document and document["status"] == "ready":
+            break
+        page.wait_for_timeout(40)
+    assert document and document["status"] == "ready"
     page.get_by_label("Pesquisar Centro Smolin").fill("molecular")
     page.get_by_role("button", name="Pesquisar", exact=True).click()
     page.get_by_text("Biologia molecular e conhecimento de referencia", exact=True).wait_for()

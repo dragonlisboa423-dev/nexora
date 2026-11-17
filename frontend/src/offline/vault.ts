@@ -60,6 +60,16 @@ export type VaultState = {
     occurrences: RecordData[];
     copiedAt: string;
   };
+  history?: {
+    id: string;
+    title: string;
+    copiedAt: string;
+    messages: {
+      role: "user" | "assistant";
+      content: string;
+      created: string;
+    }[];
+  }[];
   preferences: Record<string, unknown>;
   pending: Operation[];
   conflicts: Record<string, SyncResult>;
@@ -140,6 +150,27 @@ function validateEnvelope(value: unknown): asserts value is Envelope {
     throw new Error("Backup criptografado inválido ou incompatível.");
 }
 function validateState(state: VaultState) {
+  if (
+    state.history &&
+    (!Array.isArray(state.history) ||
+      state.history.length > 10 ||
+      state.history.some(
+        (c) =>
+          typeof c.id !== "string" ||
+          typeof c.title !== "string" ||
+          typeof c.copiedAt !== "string" ||
+          !Array.isArray(c.messages) ||
+          c.messages.length > 100 ||
+          JSON.stringify(c).length > 1_000_000 ||
+          c.messages.some(
+            (m) =>
+              !["user", "assistant"].includes(m.role) ||
+              typeof m.content !== "string" ||
+              typeof m.created !== "string",
+          ),
+      ))
+  )
+    throw new Error("Histórico local inválido ou acima dos limites.");
   validateBooks(state.books);
   if (
     state.planning &&

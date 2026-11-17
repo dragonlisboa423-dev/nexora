@@ -38,6 +38,7 @@ import { api, post, put, type Prefs, type SalyState } from "./api";
 import { lazy, Suspense } from "react";
 const Core = lazy(() => import("./Core").then((m) => ({ default: m.Core })));
 import { useAudio } from "./audio";
+import { voiceCommand } from "./voice_command";
 import {
   Activity,
   Evaluation,
@@ -66,6 +67,7 @@ const Purchases = lazy(() =>
 const Space = lazy(() =>
   import("./Personal").then((m) => ({ default: m.Space })),
 );
+const TextBook = lazy(() => import("./TextBook"));
 const PdfBook = lazy(() => import("./PdfBook"));
 const Studio = lazy(() => import("./Studio"));
 const Library = lazy(() => import("./Library"));
@@ -207,9 +209,74 @@ function App() {
     abort = useRef<AbortController | null>(null),
     bottom = useRef<HTMLDivElement>(null),
     location = useLocation();
+  const [voiceEnabled, setVoiceEnabled] = useState(false);
+  const voiceActive = useRef(false),
+    voiceStarting = useRef(false),
+    voiceUntil = useRef(0),
+    sendVoice = useRef<(text: string) => void>(() => {});
   const audio = useAudio(setState, setError, setInput, () =>
     setPulse(performance.now()),
   );
+  function disableVoice() {
+    voiceActive.current = false;
+    voiceUntil.current = 0;
+    setVoiceEnabled(false);
+    audio.stopMic();
+  }
+  function listenVoice() {
+    if (!voiceActive.current || document.hidden || voiceStarting.current)
+      return;
+    voiceStarting.current = true;
+    void audio
+      .startMic(false, (text) => {
+        if (!voiceActive.current) return;
+        const result = voiceCommand(text, Date.now(), voiceUntil.current);
+        if (!result) return;
+        if (result.activated) voiceUntil.current = Date.now() + 30000;
+        if (!result.command) {
+          setInput("");
+          return;
+        }
+        if (
+          /^(desligar microfone|desligue o microfone|sair do modo de voz|silenciar)$/i.test(
+            result.command,
+          )
+        ) {
+          disableVoice();
+          audio.stopSpeech();
+          return;
+        }
+        audio.stopMic();
+        setInput(result.command);
+        sendVoice.current(result.command);
+      })
+      .finally(() => {
+        voiceStarting.current = false;
+      });
+  }
+  sendVoice.current = (text) => {
+    void send({ preventDefault: () => {} } as React.FormEvent, text);
+  };
+  useEffect(() => {
+    if (state === "error" && voiceActive.current) {
+      disableVoice();
+      return;
+    }
+    if (voiceEnabled && !audio.listening && !busy && state === "idle") {
+      const timer = setTimeout(listenVoice, 250);
+      return () => clearTimeout(timer);
+    }
+  }, [voiceEnabled, audio.listening, busy, state]);
+  useEffect(() => {
+    const hide = () => {
+      if (document.hidden && voiceActive.current) {
+        disableVoice();
+        audio.stopSpeech();
+      }
+    };
+    document.addEventListener("visibilitychange", hide);
+    return () => document.removeEventListener("visibilitychange", hide);
+  }, []);
   useEffect(() => {
     api("/auth/me")
       .then(() => setAuth(true))
@@ -242,6 +309,7 @@ function App() {
   }, [messages]);
   useEffect(() => {
     setOpen(false);
+    disableVoice();
     audio.stopSpeech();
     audio.stopMic();
     abort.current?.abort();
@@ -373,8 +441,14 @@ function App() {
       }
       if (!completed) throw Error("Fluxo encerrado antes da conclusão.");
       emit({ type: "MODEL_RESPONSE_COMPLETED", id: "interaction" });
-      if (prefs?.voice.autoSpeak && answer) audio.speak(answer, prefs.voice);
+      if (voiceActive.current && answer && prefs)
+        audio.speak(answer, prefs.voice, () => {
+          voiceUntil.current = Date.now() + 30000;
+        });
+      else if (prefs?.voice.autoSpeak && answer)
+        audio.speak(answer, prefs.voice);
     } catch (e) {
+      if (voiceActive.current) disableVoice();
       if ((e as Error).name === "AbortError") {
         setState("idle");
         setError(
@@ -391,6 +465,7 @@ function App() {
     }
   }
   function stop() {
+    disableVoice();
     abort.current?.abort();
     audio.stopMic();
     audio.stopSpeech();
@@ -883,8 +958,40 @@ function App() {
                         <div>
                           <button
                             type="button"
+                            disabled={busy && !voiceEnabled}
+                            aria-pressed={voiceEnabled}
+                            onClick={() => {
+                              if (voiceActive.current) {
+                                disableVoice();
+                                audio.stopSpeech();
+                                return;
+                              }
+                              if (!prefs?.privacy.remoteConsent) {
+                                setError(
+                                  "Autorize o provedor remoto em Privacidade antes do modo de voz.",
+                                );
+                                return;
+                              }
+                              if (
+                                !confirm(
+                                  "Ativar voz enquanto esta página estiver aberta? O reconhecimento do navegador pode enviar áudio ao fornecedor. Diga SALY e o comando; depois há uma janela de 30 segundos para continuar. A voz usada será a selecionada no catálogo.",
+                                )
+                              )
+                                return;
+                              voiceActive.current = true;
+                              voiceUntil.current = 0;
+                              setVoiceEnabled(true);
+                              listenVoice();
+                            }}
+                          >
+                            {voiceEnabled
+                              ? "Desligar modo de voz"
+                              : "Modo de voz SALY"}
+                          </button>
+                          <button
+                            type="button"
                             className={audio.listening ? "mic active" : "mic"}
-                            disabled={busy}
+                            disabled={busy || voiceEnabled}
                             aria-label={
                               audio.listening
                                 ? "Parar microfone"
@@ -905,7 +1012,7 @@ function App() {
                           <button
                             type="button"
                             className="text-button push-talk"
-                            disabled={busy}
+                            disabled={busy || voiceEnabled}
                             onPointerDown={(e) => {
                               e.currentTarget.setPointerCapture(e.pointerId);
                               void audio.startMic();
@@ -974,7 +1081,16 @@ function App() {
                       {!health?.model_ready
                         ? "Modelo offline. Memórias, documentos e ferramentas continuam disponíveis."
                         : "Saly pode errar. Verifique informações importantes."}{" "}
-                      · Voz do navegador pode usar serviços externos.
+                      · Voz do navegador pode usar serviços externos.{" "}
+                      {voiceEnabled && (
+                        <span role="status">
+                          Modo de voz ativo: diga SALY. Microfone{" "}
+                          {audio.listening
+                            ? "ouvindo"
+                            : "desligado durante processamento/resposta"}
+                          . Ao ocultar a página, o modo é desligado.
+                        </span>
+                      )}
                     </div>
                   </section>
                   <Approvals notify={setError} compact />
@@ -982,6 +1098,14 @@ function App() {
               }
             />
             <Route path="/memory" element={<Memories notify={setError} />} />
+            <Route
+              path="/knowledge/:documentId/text"
+              element={
+                <Suspense fallback={<p>Abrindo livro…</p>}>
+                  <TextBook />
+                </Suspense>
+              }
+            />
             <Route
               path="/knowledge/:documentId/read"
               element={
