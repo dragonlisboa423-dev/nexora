@@ -35,6 +35,7 @@ from .memory import index_memory, search_memories
 from .personal import router as personal_router
 from .planning import router as planning_router
 from .planning import scheduler as alarm_scheduler
+from .purchase_visual import router as purchase_visual_router
 from .security import COOKIE, owner, throttle, unlock
 from .services import Memory, memory_delete, memory_save
 from .smolin import service as smolin
@@ -1331,6 +1332,7 @@ app.include_router(sync_router)
 app.include_router(voices_router)
 app.include_router(planning_router)
 app.include_router(personal_router)
+app.include_router(purchase_visual_router)
 app.include_router(library_router)
 app.include_router(media_router)
 

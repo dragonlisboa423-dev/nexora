@@ -3,6 +3,7 @@
 import json
 import os
 
+from browser_navigation import go
 from browser_support import PASSWORD, test_server
 from playwright.sync_api import expect, sync_playwright
 
@@ -19,7 +20,7 @@ with test_server(port=8006) as base, sync_playwright() as playwright:
     page.goto(base)
     page.get_by_label("Senha privada", exact=True).fill(PASSWORD)
     page.get_by_role("button", name="Desbloquear", exact=True).click()
-    page.get_by_role("link", name="Biblioteca", exact=True).click()
+    go(page, "Biblioteca")
     page.get_by_role("button", name="+ Criar livro manual", exact=True).click()
     page.get_by_label("Título do livro", exact=True).fill("Livro manual E2E")
     page.get_by_role("button", name="Adicionar capítulo", exact=True).click()
@@ -54,8 +55,9 @@ with test_server(port=8006) as base, sync_playwright() as playwright:
     book = context.request.get(base + "/api/books").json()[0]
     progress = context.request.get(base + "/api/books/" + book["id"] + "/progress").json()
     page.reload()
-    page.get_by_role("button", name="Abrir rascunho de Livro manual E2E", exact=True).click()
+    page.get_by_role("button", name="Ler Livro manual E2E", exact=True).click()
     page.get_by_role("article", name="Página 2: Segunda página E2E", exact=True).wait_for()
+    page.get_by_text("Opções do livro", exact=True).click()
     page.get_by_role("button", name="Editar rascunho manual", exact=True).click()
     page.get_by_label("Estado editorial", exact=True).select_option("review")
     page.once("dialog", lambda d: d.accept())

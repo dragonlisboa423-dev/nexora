@@ -120,6 +120,7 @@ def save_personal(kind, payload, key=None, base_revision=None, create=False):
         data = normalize(kind, payload)
         if kind == "purchases" and old:
             data["image_id"] = old.get("image_id")
+            data["product_image_id"] = old.get("product_image_id")
             data["alarm_ids"] = old.get("alarm_ids", [])
         return store.save(kind, data, key)
 
@@ -134,6 +135,8 @@ def delete_personal(kind, key, base_revision):
         if kind == "purchases":
             if record.get("image_id"):
                 remove_asset(record["image_id"])
+            if record.get("product_image_id"):
+                remove_asset(record["product_image_id"])
             from .planning import cancel_occurrences
 
             for alarm_id in record.get("alarm_ids", []):
@@ -406,12 +409,13 @@ def personal_export(_=Depends(owner)):
     return {
         "format": "saly-personal-v1",
         "purchases": [
-            {k: v for k, v in p.items() if k not in {"image_id", "alarm_ids"}}
+            {k: v for k, v in p.items() if k not in {"image_id", "product_image_id", "alarm_ids"}}
             for p in store.all_records("purchases")
         ],
         "drawers": store.all_records("drawers"),
         "links": store.all_records("links"),
         "budgets": store.setting("purchase_budgets", {}),
+        "savings_goals": list(store.setting("purchase_savings_goals", {}).values()),
         "note": "Imagens e alarmes não estão incluídos; exporte-os separadamente.",
     }
 

@@ -10,6 +10,7 @@ import time
 import urllib.request
 from pathlib import Path
 
+from browser_navigation import go
 from playwright.sync_api import sync_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -143,14 +144,14 @@ with sync_playwright() as p:
     page.get_by_role("button", name="Parar microfone", exact=True).click()
     assert page.evaluate("window.__testStream.getTracks().every(t=>t.readyState==='ended')")
     page.get_by_role("button", name="Fechar aviso").click()
-    page.get_by_role("link", name="Memórias", exact=True).click()
+    go(page, "Memórias")
     page.get_by_role("button", name="+ Nova memória").click()
     page.get_by_label("Conteúdo", exact=True).fill("Projeto molecular de referência")
     page.get_by_role("button", name="Salvar", exact=True).click()
     page.get_by_text("Projeto molecular de referência", exact=True).wait_for()
     page.reload()
     page.get_by_text("Projeto molecular de referência", exact=True).wait_for()
-    page.get_by_role("link", name="Centro Smolin", exact=True).click()
+    go(page, "Centro Smolin")
     page.get_by_label("Importar documentos").set_input_files(
         {
             "name": "biologia.md",
@@ -176,7 +177,7 @@ with sync_playwright() as p:
     page.get_by_label("Pesquisar Centro Smolin").fill("molecular")
     page.get_by_role("button", name="Pesquisar", exact=True).click()
     page.get_by_text("Biologia molecular e conhecimento de referencia", exact=True).wait_for()
-    page.get_by_role("link", name="Agenda", exact=True).click()
+    go(page, "Agenda")
     page.get_by_role("button", name="+ Novo lembrete").click()
     page.get_by_label("Título", exact=True).fill("Revisar biologia")
     page.get_by_label("Data e hora no fuso selecionado").fill("2026-11-12T14:00")
@@ -185,7 +186,7 @@ with sync_playwright() as p:
     page.once("dialog", lambda dialog: dialog.accept())
     page.get_by_role("button", name="Aprovar operação", exact=True).click()
     page.get_by_role("heading", name="Revisar biologia", exact=True).wait_for()
-    page.get_by_role("link", name="Ferramentas e integrações", exact=True).click()
+    go(page, "Ferramentas e integrações")
     page.get_by_role("button", name="Executar ou propor", exact=True).click()
     page.locator(".tool-result").filter(has_text="14").wait_for()
     page.goto("http://127.0.0.1:8001/evaluation")
@@ -224,7 +225,7 @@ with sync_playwright() as p:
     page.screenshot(path="/tmp/saly-smolin-mobile.png", full_page=True)
     assert page.evaluate("document.documentElement.scrollWidth<=window.innerWidth")
     page.get_by_role("button", name="Alternar menu").click()
-    page.get_by_role("link", name="Memórias", exact=True).click()
+    go(page, "Memórias")
     page.get_by_role("heading", name="Memórias", exact=True).wait_for()
     page.goto("http://127.0.0.1:8001/evaluation")
     page.get_by_role("article", name="Relatório do laboratório").first.wait_for()

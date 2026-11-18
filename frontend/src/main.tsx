@@ -6,8 +6,14 @@ import {
   Route,
   Routes,
   useLocation,
+  useNavigate,
+  Navigate,
 } from "react-router-dom";
 import {
+  MessageCircle,
+  CalendarDays,
+  History,
+  Leaf,
   Activity as ActivityIcon,
   AudioLines,
   Bell,
@@ -48,6 +54,20 @@ import {
   Voices,
 } from "./Panels";
 import "./style.css";
+import "./botanical.css";
+import { areaFor, areaLabels, areaLinks } from "./navigation";
+const KnowledgeHome = lazy(() =>
+  import("./Areas").then((m) => ({ default: m.KnowledgeHome })),
+);
+const RoutineHome = lazy(() =>
+  import("./Areas").then((m) => ({ default: m.RoutineHome })),
+);
+const AdvancedHome = lazy(() =>
+  import("./Areas").then((m) => ({ default: m.AdvancedHome })),
+);
+const MediaAdvanced = lazy(() =>
+  import("./Areas").then((m) => ({ default: m.MediaAdvanced })),
+);
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Smolin } from "./Smolin";
@@ -77,23 +97,8 @@ import {
   VerificationDetails,
   type Verification,
 } from "./Laboratory";
-const labels: Record<SalyState, string> = {
-  synthesizing: "Preparando áudio",
-  idle: "Em repouso",
-  listening: "Escutando",
-  thinking: "Gerando resposta",
-  responding: "Respondendo",
-  speaking: "Falando",
-  paused: "Fala pausada",
-  executing: "Executando operação",
-  error: "Atenção necessária",
-  transcribing: "Transcrevendo voz",
-  searching: "Consultando fontes",
-  reading_document: "Processando documento",
-  executing_tool: "Executando ferramenta",
-  success: "Operação confirmada",
-  offline: "Sem conexão",
-};
+import { stateLabels as labels } from "./state_labels";
+
 type Message = {
   role: string;
   content: string;
@@ -208,7 +213,17 @@ function App() {
   const saveQueue = useRef(Promise.resolve()),
     abort = useRef<AbortController | null>(null),
     bottom = useRef<HTMLDivElement>(null),
-    location = useLocation();
+    location = useLocation(),
+    navigate = useNavigate();
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const historyDialog = useRef<HTMLDialogElement>(null);
+  const area = areaFor(location.pathname);
+  useEffect(() => {
+    const dialog = historyDialog.current;
+    if (!dialog) return;
+    if (historyOpen && !dialog.open) dialog.showModal();
+    else if (!historyOpen && dialog.open) dialog.close();
+  }, [historyOpen]);
   const [voiceEnabled, setVoiceEnabled] = useState(false);
   const voiceActive = useRef(false),
     voiceStarting = useRef(false),
@@ -293,6 +308,7 @@ function App() {
       .catch((e) => setError(e.message));
     void refreshHistory();
     const check = () =>
+      !document.hidden &&
       api("/health")
         .then(setHealth)
         .catch(() => setHealth(null));
@@ -309,6 +325,7 @@ function App() {
   }, [messages]);
   useEffect(() => {
     setOpen(false);
+    setHistoryOpen(false);
     disableVoice();
     audio.stopSpeech();
     audio.stopMic();
@@ -497,24 +514,15 @@ function App() {
     );
   if (!auth) return <Login done={() => setAuth(true)} />;
   const navigation = [
-    ["/", "Visão central", Sparkles],
-    ["/memory", "Memórias", Brain],
-    ["/knowledge", "Centro Smolin", Database],
-    ["/agenda", "Agenda", ActivityIcon],
-    ["/alarms", "Alarmes", Bell],
-    ["/purchases", "Compras", ShoppingBag],
-    ["/space", "Espaço", Folder],
-    ["/library", "Biblioteca", BookOpen],
-    ["/studio", "Estúdio Multimídia", Film],
-    ["/tools", "Ferramentas e integrações", ShieldCheck],
-    ["/voices", "Biblioteca de vozes", AudioLines],
-    ["/activity", "Atividades", ActivityIcon],
-    ["/evaluation", "Avaliação", ShieldCheck],
-    ["/laboratory", "Laboratório SALY", FlaskConical],
-    ["/settings", "Configurações", Settings],
+    ["/", "Conversa", MessageCircle, "conversation"],
+    ["/knowledge", "Conhecimento", Leaf, "knowledge"],
+    ["/studio", "Mídia", Film, "media"],
+    ["/routine", "Rotina", CalendarDays, "routine"],
   ] as const;
   return (
-    <div className="app">
+    <div
+      className={`app saly-two area-${area} ${messages.length ? "has-conversation" : ""}`}
+    >
       <a className="skip" href="#main">
         Pular para conteúdo
       </a>
@@ -525,15 +533,59 @@ function App() {
             SALY<small>INTELLIGENCE</small>
           </div>
         </NavLink>
-        <div className="workspace-label">SEU ESPAÇO PESSOAL</div>
-        <nav>
-          {navigation.map(([to, label, Icon]) => (
-            <NavLink to={to} end={to === "/"} key={to}>
-              <Icon size={18} />
-              {label}
+        <nav aria-label="Áreas principais">
+          {navigation.map(([to, label, Icon, key]) => (
+            <NavLink
+              key={to}
+              to={to}
+              end
+              className={area === key ? "active" : ""}
+              aria-current={area === key ? "page" : undefined}
+            >
+              <Icon size={22} strokeWidth={1.35} />
+              <span>{label}</span>
             </NavLink>
           ))}
         </nav>
+        <div className="rail-utilities">
+          <NavLink to="/advanced" aria-label="Ajustes e recursos">
+            <Settings size={20} />
+            <span>Ajustes</span>
+          </NavLink>
+          <button
+            aria-label="Sair"
+            onClick={async () => {
+              try {
+                stop();
+                await post("/auth/logout");
+                setAuth(false);
+                setMessages([]);
+              } catch (e) {
+                setError((e as Error).message);
+              }
+            }}
+          >
+            <LogOut size={19} />
+            <span>Sair</span>
+          </button>
+        </div>
+      </aside>
+      <dialog
+        ref={historyDialog}
+        className="history-drawer"
+        aria-label="Histórico de conversas"
+        onCancel={() => setHistoryOpen(false)}
+      >
+        <div className="drawer-heading">
+          <span>Suas conversas</span>
+          <button
+            className="icon-button"
+            aria-label="Fechar histórico"
+            onClick={() => setHistoryOpen(false)}
+          >
+            <X size={20} />
+          </button>
+        </div>
         <div className="history-title">
           CONVERSAS{" "}
           <button
@@ -574,6 +626,8 @@ function App() {
                     stop();
                     setMessages(await api("/conversations/" + h.id));
                     setConversation(h.id);
+                    setHistoryOpen(false);
+                    navigate("/");
                     setSources([]);
                     setMemoryIds([]);
                   } catch (e) {
@@ -586,29 +640,7 @@ function App() {
             ))}
           {!history.length && <small>Suas conversas aparecerão aqui.</small>}
         </div>
-        <div className="sidebar-footer">
-          <span className={`dot ${health?.model_ready ? "online" : ""}`} />
-          <div>
-            {health?.model_ready ? "Modelo conectado" : "Modelo desconectado"}
-            <small>{health?.model || "Verificando conexão"}</small>
-          </div>
-          <button
-            aria-label="Sair"
-            onClick={async () => {
-              try {
-                stop();
-                await post("/auth/logout");
-                setAuth(false);
-                setMessages([]);
-              } catch (e) {
-                setError((e as Error).message);
-              }
-            }}
-          >
-            <LogOut size={17} />
-          </button>
-        </div>
-      </aside>
+      </dialog>
       {open && (
         <button
           className="overlay"
@@ -616,30 +648,76 @@ function App() {
           onClick={() => setOpen(false)}
         />
       )}
+      <nav className="mobile-areas" aria-label="Navegação móvel">
+        {navigation.map(([to, label, Icon, key]) => (
+          <NavLink
+            key={to}
+            end
+            to={to}
+            className={area === key ? "active" : ""}
+            aria-current={area === key ? "page" : undefined}
+          >
+            <Icon size={21} strokeWidth={1.5} />
+            <span>{label}</span>
+          </NavLink>
+        ))}
+      </nav>
       <div className="main-shell">
         <header className="topbar">
           <button
-            className="icon-button"
+            className="icon-button menu-toggle"
             aria-label="Alternar menu"
             onClick={() => setOpen(!open)}
           >
             <Menu size={20} />
           </button>
-          <span>
-            Workspace <ChevronRight size={13} />{" "}
-            {navigation.find(([p]) => p === location.pathname)?.[1] ||
-              "Configurações"}
+          <span className="area-breadcrumb">
+            <Leaf size={15} />
+            {areaLabels[area]}
           </span>
-          <div>
-            <span className={`dot ${health?.model_ready ? "online" : ""}`} />
-            {health?.model_ready
-              ? "Inferência disponível"
-              : "Inferência indisponível"}
-            <span className="private">
-              <ShieldCheck size={14} /> Espaço privado
+          <div className="topbar-actions">
+            <span
+              className={`connection-label ${health?.model_ready ? "online" : ""}`}
+            >
+              <i />
+              {health?.model_ready ? "Modelo conectado" : "Modelo indisponível"}
             </span>
+            <button
+              className="icon-button"
+              aria-label="Histórico de conversas"
+              onClick={() => setHistoryOpen(true)}
+            >
+              <History size={19} />
+            </button>
+            <button
+              className="icon-button"
+              aria-label="Nova conversa"
+              disabled={busy}
+              onClick={() => {
+                stop();
+                setConversation(null);
+                setMessages([]);
+                setSources([]);
+                setMemoryIds([]);
+                navigate("/");
+              }}
+            >
+              <Plus size={20} />
+            </button>
           </div>
         </header>
+        {areaLinks[area] && (
+          <nav
+            className="area-tabs"
+            aria-label={`Navegação de ${areaLabels[area]}`}
+          >
+            {areaLinks[area].map((item) => (
+              <NavLink end key={item.to} to={item.to}>
+                {item.name}
+              </NavLink>
+            ))}
+          </nav>
+        )}
         <main id="main">
           <PwaUpdate />
           <AlarmNotifier
@@ -671,29 +749,16 @@ function App() {
                 <>
                   <section className="hero">
                     <div className="hero-copy">
-                      <div className="eyebrow">
-                        <span />
-                        INTELIGÊNCIA QUE CONSTRÓI CONTEXTO
-                      </div>
                       <h1>
                         Olá. Eu sou <em>Saly.</em>
                       </h1>
-                      <p>
-                        Um espaço para pensar, aprender e criar.
-                        <br />
-                        Sua inteligência pessoal, com memória e propósito.
-                      </p>
+                      <p>Um espaço para suas ideias crescerem.</p>
                     </div>
                     <div className="hero-status">
                       <span className={`status ${state}`}>
                         <i />
                         {labels[state]}
                       </span>
-                      <small>
-                        {health?.model_ready
-                          ? "MODELO REMOTO · CONTEXTO AUTORIZADO"
-                          : "CONECTE O MODELO PARA CONVERSAR"}
-                      </small>
                     </div>
                     <Suspense
                       fallback={
@@ -710,54 +775,11 @@ function App() {
                         pulse={pulse}
                       />
                     </Suspense>
-                    <div className="core-footnote">
-                      <span>MEMÓRIA PERSISTENTE</span>
-                      <i />
-                      <span>CONTEXTO AUTORIZADO</span>
-                      <i />
-                      <span>CONTROLE HUMANO</span>
-                    </div>
                   </section>
                   <section
                     className="conversation"
                     aria-label="Conversa com Saly"
                   >
-                    <div className="section-line">
-                      <span>CONVERSA</span>
-                      <small>
-                        {messages.length
-                          ? "Contexto da sessão"
-                          : "Comece com uma ideia"}
-                      </small>
-                      <button
-                        className="text-button"
-                        disabled={busy}
-                        onClick={() => {
-                          stop();
-                          setConversation(null);
-                          setMessages([]);
-                          setSources([]);
-                          setMemoryIds([]);
-                        }}
-                      >
-                        Nova conversa
-                      </button>
-                    </div>
-                    {!messages.length && (
-                      <div className="suggestions">
-                        {[
-                          "Ajude-me a organizar uma ideia",
-                          "O que você sabe sobre meu projeto?",
-                          "Vamos explorar um novo assunto",
-                        ].map((t, i) => (
-                          <button key={t} onClick={() => setInput(t)}>
-                            <span>0{i + 1}</span>
-                            {t}
-                            <ChevronRight size={15} />
-                          </button>
-                        ))}
-                      </div>
-                    )}
                     <div className="messages" aria-live="polite">
                       {messages.map((m, i) => (
                         <article className={`message ${m.role}`} key={i}>
@@ -1009,28 +1031,31 @@ function App() {
                             <Mic size={17} />
                             {audio.listening ? "Encerrar" : "Microfone"}
                           </button>
-                          <button
-                            type="button"
-                            className="text-button push-talk"
-                            disabled={busy || voiceEnabled}
-                            onPointerDown={(e) => {
-                              e.currentTarget.setPointerCapture(e.pointerId);
-                              void audio.startMic();
-                            }}
-                            onPointerUp={() => audio.stopMic()}
-                            onPointerCancel={() => audio.stopMic()}
-                            onKeyDown={(e) => {
-                              if (e.code === "Space" && !e.repeat) {
-                                e.preventDefault();
+                          <details className="mic-options">
+                            <summary>Mais opções de voz</summary>
+                            <button
+                              type="button"
+                              className="text-button push-talk"
+                              disabled={busy || voiceEnabled}
+                              onPointerDown={(e) => {
+                                e.currentTarget.setPointerCapture(e.pointerId);
                                 void audio.startMic();
-                              }
-                            }}
-                            onKeyUp={(e) => {
-                              if (e.code === "Space") audio.stopMic();
-                            }}
-                          >
-                            Segure para falar
-                          </button>
+                              }}
+                              onPointerUp={() => audio.stopMic()}
+                              onPointerCancel={() => audio.stopMic()}
+                              onKeyDown={(e) => {
+                                if (e.code === "Space" && !e.repeat) {
+                                  e.preventDefault();
+                                  void audio.startMic();
+                                }
+                              }}
+                              onKeyUp={(e) => {
+                                if (e.code === "Space") audio.stopMic();
+                              }}
+                            >
+                              Segure para falar
+                            </button>
+                          </details>
                           {(busy ||
                             audio.listening ||
                             state === "speaking" ||
@@ -1077,9 +1102,21 @@ function App() {
                         </button>
                       </div>
                     </form>
+                    {!messages.length && (
+                      <div className="conversation-context">
+                        <NavLink to="/knowledge/documents">
+                          <BookOpen size={15} />
+                          Explorar um documento
+                        </NavLink>
+                        <NavLink to="/routine">
+                          <CalendarDays size={15} />
+                          Organizar meu dia
+                        </NavLink>
+                      </div>
+                    )}
                     <div className="composer-note">
                       {!health?.model_ready
-                        ? "Modelo offline. Memórias, documentos e ferramentas continuam disponíveis."
+                        ? "O modelo ainda não está disponível. Memórias e documentos continuam acessíveis."
                         : "Saly pode errar. Verifique informações importantes."}{" "}
                       · Voz do navegador pode usar serviços externos.{" "}
                       {voiceEnabled && (
@@ -1095,6 +1132,39 @@ function App() {
                   </section>
                   <Approvals notify={setError} compact />
                 </>
+              }
+            />
+            <Route
+              path="/routine"
+              element={
+                <Suspense fallback={<p>Preparando sua rotina…</p>}>
+                  <RoutineHome />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/advanced"
+              element={
+                <Suspense fallback={<p>Preparando ajustes…</p>}>
+                  <AdvancedHome />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/advanced/media"
+              element={
+                <Suspense fallback={<p>Consultando provedores…</p>}>
+                  <MediaAdvanced />
+                </Suspense>
+              }
+            />
+            <Route path="/media" element={<Navigate to="/studio" replace />} />
+            <Route
+              path="/knowledge"
+              element={
+                <Suspense fallback={<p>Abrindo seu conhecimento…</p>}>
+                  <KnowledgeHome />
+                </Suspense>
               }
             />
             <Route path="/memory" element={<Memories notify={setError} />} />
@@ -1115,7 +1185,7 @@ function App() {
               }
             />
             <Route
-              path="/knowledge"
+              path="/knowledge/documents"
               element={
                 <Smolin
                   notify={setError}
@@ -1264,9 +1334,9 @@ function App() {
           </Routes>
         </main>
         <footer className="site-footer">
-          <span>SALY INTELLIGENCE</span>
-          <span>Seu contexto. Sua inteligência.</span>
-          <span>v0.4 · MEMÓRIA CONTÍNUA</span>
+          <span>SALY</span>
+          <NavLink to="/offline">Cofre local</NavLink>
+          <NavLink to="/advanced">Ajustes e privacidade</NavLink>
         </footer>
       </div>
     </div>

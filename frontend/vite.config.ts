@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { defineConfig, type Plugin } from "vite";
@@ -34,7 +35,14 @@ function publicWorker(): Plugin {
           .filter((name) => /\.(js|mjs|css)$/.test(name))
           .map((name) => "/" + name),
       ];
-      const version = Object.keys(bundle).join("|");
+      const version = createHash("sha256")
+        .update(Object.keys(bundle).join("|"))
+        .update(readFileSync(resolve("index.html")))
+        .update(readFileSync(resolve("public/manifest.webmanifest")))
+        .update(readFileSync(resolve("public/icons/saly-192.png")))
+        .update(readFileSync(resolve("public/icons/saly-512.png")))
+        .digest("hex")
+        .slice(0, 20);
       this.emitFile({
         type: "asset",
         fileName: "sw.js",

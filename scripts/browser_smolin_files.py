@@ -8,6 +8,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from browser_navigation import go
 from browser_support import PASSWORD, test_server
 from playwright.sync_api import expect, sync_playwright
 from pypdf import PdfWriter
@@ -46,17 +47,21 @@ with test_server(port=8010) as base, sync_playwright() as playwright:
         headless=True,
         args=["--no-sandbox"],
     )
-    context = browser.new_context(viewport={"width": 1440, "height": 1000})
+    # Isolate controlled proxy responses from SW interception; PWA is covered separately.
+    context = browser.new_context(viewport={"width": 1440, "height": 1000}, service_workers="block")
     page = context.new_page()
     errors = []
     page.on("pageerror", lambda error: errors.append(str(error)))
     page.goto(base)
     page.get_by_label("Senha privada", exact=True).fill(PASSWORD)
     page.get_by_role("button", name="Desbloquear", exact=True).click()
-    page.get_by_role("link", name="Centro Smolin", exact=True).click()
+    go(page, "Centro Smolin")
+
+    proxy_hits = []
 
     def proxy_error(route):
         if route.request.method == "POST":
+            proxy_hits.append(route.request.url)
             route.fulfill(status=413, content_type="text/html", body="<html>proxy failure</html>")
         else:
             route.continue_()
@@ -66,6 +71,7 @@ with test_server(port=8010) as base, sync_playwright() as playwright:
         {"name": "proxy.csv", "mimeType": "text/csv", "buffer": b"gene,value"}
     )
     page.get_by_text("HTTP 413:", exact=False).wait_for()
+    assert proxy_hits, "Controlled proxy response must actually intercept the upload"
     assert "Unexpected token" not in page.locator("body").inner_text()
     page.unroute("**/api/knowledge", proxy_error)
     raw = b"\x00NEXORA_RAW\xff" * 500000

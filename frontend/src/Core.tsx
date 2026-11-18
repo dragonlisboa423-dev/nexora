@@ -1,236 +1,183 @@
 import {
   Component,
   Suspense,
+  lazy,
   useEffect,
+  useId,
   useMemo,
   useRef,
+  useState,
   type ReactNode,
 } from "react";
-import { Canvas, useFrame } from "@react-three/fiber";
-import * as THREE from "three";
-import { SalyState } from "./api";
-
-const vertex = `varying vec3 p; varying vec3 vNormal; varying vec3 vView; uniform float t; uniform float energy;
-float fluid(vec3 q){return sin(q.x*2.8+t*.38)*cos(q.y*3.4-t*.29)*sin(q.z*2.6+t*.23)+.45*sin(q.y*5.+q.x*3.-t*.42);}
-void main(){float displacement=fluid(position)*(.12+energy*.09);vec3 v=position*(1.+displacement);p=v;vNormal=normalize(normalMatrix*normal);vec4 mv=modelViewMatrix*vec4(v,1.);vView=normalize(-mv.xyz);gl_Position=projectionMatrix*mv;}`;
-const fragment = `varying vec3 p;varying vec3 vNormal;varying vec3 vView;uniform float t;uniform float energy;
-void main(){float fresnel=pow(1.-abs(dot(normalize(vNormal),vView)),2.2);float folds=sin(p.y*5.+sin(p.x*4.+t*.3)*1.3+sin(p.z*5.-t*.28));float vein=pow(.5+.5*sin(folds*3.+p.z*2.),5.);float caustic=pow(.5+.5*sin(p.x*5.+p.y*3.+sin(p.z*4.+t*.2)),12.);vec3 deep=vec3(.015,.12,.18);vec3 cyan=vec3(.12,.78,.78);vec3 light=vec3(.54,1.,.86);vec3 color=mix(deep,cyan,.2+vein*.48);color+=light*(fresnel*.75+caustic*.32)*(1.+energy*.6);gl_FragColor=vec4(color,.65+fresnel*.3);}`;
-function Organic({
-  state,
-  level,
-  quality,
-  reduced,
-  pulse,
-  speechSignal,
-}: {
+import type { SalyState } from "./api";
+import { stateLabels } from "./state_labels";
+export type CoreProps = {
   state: SalyState;
   level: React.MutableRefObject<number>;
   quality: string;
-  reduced: boolean;
   pulse: number;
   speechSignal?: React.MutableRefObject<boolean>;
-}) {
-  const group = useRef<THREE.Group>(null!);
-  const material = useMemo(
-    () =>
-      new THREE.ShaderMaterial({
-        uniforms: { t: { value: 0 }, energy: { value: 0 } },
-        vertexShader: vertex,
-        fragmentShader: fragment,
-        transparent: true,
-        wireframe: false,
-      }),
-    [],
-  );
-  const points = useMemo(() => {
-    const count = quality === "low" ? 120 : 550;
-    const a = new Float32Array(count * 3);
-    for (let i = 0; i < count; i++) {
-      const y = 1 - (i / (count - 1)) * 2;
-      const r = Math.sqrt(1 - y * y);
-      const theta = Math.PI * (3 - Math.sqrt(5)) * i;
-      a.set(
-        [Math.cos(theta) * r * 1.35, y * 1.35, Math.sin(theta) * r * 1.35],
-        i * 3,
-      );
-    }
-    return a;
-  }, [quality]);
-  useFrame(({ clock }) => {
-    const t = clock.getElapsedTime();
-    const energy =
-      state === "listening"
-        ? level.current
-        : state === "speaking"
-          ? speechSignal?.current
-            ? level.current
-            : 0.12
-          : [
-                "thinking",
-                "searching",
-                "executing_tool",
-                "reading_document",
-                "transcribing",
-              ].includes(state)
-            ? 0.25
-            : state === "responding"
-              ? 0.2
-              : 0.02;
-    material.uniforms.energy.value = THREE.MathUtils.lerp(
-      material.uniforms.energy.value,
-      energy,
-      0.13,
-    );
-    material.uniforms.t.value = reduced
-      ? 0
-      : state === "offline"
-        ? t * 0.08
-        : t;
-    if (group.current) {
-      group.current.rotation.y = reduced ? 0 : t * 0.08;
-      const boost = pulse
-        ? Math.max(0, 1 - (performance.now() - pulse) / 1100) * 0.1
-        : 0;
-      group.current.scale.setScalar(1 + energy * 0.06 + boost);
-    }
-  });
+};
+const BotanicalCanvas = lazy(() => import("./BotanicalCanvas"));
+function BotanicalFlat({ state }: { state: SalyState }) {
+  const id = useId().replace(/:/g, "");
   return (
-    <group ref={group}>
-      <mesh
-        material={material}
-        onAfterRender={(renderer) => {
-          renderer.domElement.dataset.salyRendered = "true";
-        }}
-      >
-        <sphereGeometry
-          args={[1, quality === "low" ? 32 : 72, quality === "low" ? 24 : 64]}
-        />
-      </mesh>
-      <mesh rotation={[0.4, 0, 0.5]}>
-        <icosahedronGeometry args={[0.81, 2]} />
-        <meshBasicMaterial
-          color="#58cfce"
-          wireframe
-          transparent
-          opacity={0.035}
-        />
-      </mesh>
-      <mesh>
-        <sphereGeometry args={[0.44, 24, 24]} />
-        <meshBasicMaterial color="#87fff0" transparent opacity={0.14} />
-      </mesh>
-      {[0, 1, 2].map((i) => (
-        <mesh
-          key={i}
-          rotation={[Math.PI / 2 + i * 0.3, 0.15 + i * 0.4, i * 0.5]}
+    <div className={`flat-core botanical-flat ${state}`} aria-hidden="true">
+      <svg viewBox="0 0 380 440">
+        <defs>
+          <radialGradient id={`tissue-${id}`} cx="35%" cy="32%" r="80%">
+            <stop stopColor="#adc66c" />
+            <stop offset=".42" stopColor="#486a34" />
+            <stop offset="1" stopColor="#182e1e" />
+          </radialGradient>
+          <linearGradient id={`vein-${id}`} x1="0" y1="0" x2="1" y2="1">
+            <stop stopColor="#d4e59c" stopOpacity=".75" />
+            <stop offset="1" stopColor="#63864c" stopOpacity=".25" />
+          </linearGradient>
+        </defs>
+        <g
+          className="botanical-tissue"
+          fill={`url(#tissue-${id})`}
+          stroke="#8dab6833"
         >
-          <torusGeometry args={[1.12 + i * 0.09, 0.004, 6, 128]} />
-          <meshBasicMaterial color="#67dacc" transparent opacity={0.07} />
-        </mesh>
-      ))}
-      <points>
-        <bufferGeometry>
-          <bufferAttribute attach="attributes-position" args={[points, 3]} />
-        </bufferGeometry>
-        <pointsMaterial
-          color="#8bffea"
-          size={0.012}
-          transparent
-          opacity={0.5}
-        />
-      </points>
-    </group>
+          <path d="M190 331C95 303 91 231 119 172C143 118 161 93 170 55C203 107 221 133 245 177C286 253 263 312 190 331Z" />
+          <path d="M181 328C99 275 130 195 151 159C175 119 182 85 197 47C244 120 271 179 258 237C248 284 219 309 181 328Z" />
+          <path d="M182 326C132 275 153 217 182 170C203 132 210 97 214 75C254 171 237 255 182 326Z" />
+          <path d="M183 325C94 275 105 200 115 154C133 207 154 217 168 244C185 273 188 303 183 325Z" />
+        </g>
+        <g fill="none" stroke={`url(#vein-${id})`} strokeLinecap="round">
+          <path
+            strokeWidth="2"
+            d="M183 329Q165 231 196 77M181 327Q120 255 121 175M190 325Q242 246 226 151"
+          />
+          <path d="M177 273Q143 254 133 222M177 240Q161 219 157 191M180 209Q206 185 211 159M183 179Q171 167 171 148M229 226Q246 207 242 190M219 266Q205 249 203 233" />
+          <path
+            className="botanical-root"
+            strokeWidth="2"
+            d="M181 325Q174 356 155 376T135 410M188 329Q204 354 196 374T209 415M186 333Q180 374 168 398M197 356Q220 364 234 391M158 374Q142 376 130 391"
+          />
+        </g>
+      </svg>
+    </div>
   );
 }
 class Boundary extends Component<
-  { children: ReactNode; fallback: ReactNode },
+  { children: ReactNode; fallback: ReactNode; onFailure: () => void },
   { failed: boolean }
 > {
   state = { failed: false };
   static getDerivedStateFromError() {
     return { failed: true };
   }
+  componentDidCatch() {
+    this.props.onFailure();
+  }
   render() {
     return this.state.failed ? this.props.fallback : this.props.children;
   }
 }
-export function Core(props: {
-  state: SalyState;
-  level: React.MutableRefObject<number>;
-  quality: string;
-  pulse: number;
-  speechSignal?: React.MutableRefObject<boolean>;
-}) {
-  const container = useRef<HTMLDivElement>(null);
+export function Core(props: CoreProps) {
+  const [failed, setFailed] = useState(false);
+  const container = useRef<HTMLDivElement>(null),
+    [visible, setVisible] = useState(true),
+    [reduced, setReduced] = useState(
+      matchMedia("(prefers-reduced-motion: reduce)").matches,
+    ),
+    [small, setSmall] = useState(matchMedia("(max-width:760px)").matches);
   useEffect(() => {
-    let frame = 0;
-    function update() {
-      container.current?.style.setProperty(
-        "--audio-energy",
-        String(
-          props.state === "listening" ||
-            (props.state === "speaking" && props.speechSignal?.current)
-            ? props.level.current
-            : 0,
-        ),
-      );
-      frame = requestAnimationFrame(update);
-    }
-    update();
-    return () => cancelAnimationFrame(frame);
-  }, [props.state]);
-  const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const flat = (
-    <div className={`flat-core ${props.state}`} aria-hidden="true">
-      <i />
-      <i />
-      <i />
-      <b />
-    </div>
-  );
+    const motion = matchMedia("(prefers-reduced-motion: reduce)"),
+      mobile = matchMedia("(max-width:760px)"),
+      change = () => {
+        setReduced(motion.matches);
+        setSmall(mobile.matches);
+      };
+    motion.addEventListener("change", change);
+    mobile.addEventListener("change", change);
+    return () => {
+      motion.removeEventListener("change", change);
+      mobile.removeEventListener("change", change);
+    };
+  }, []);
+  useEffect(() => {
+    let intersecting = true;
+    const refresh = () => setVisible(intersecting && !document.hidden);
+    const observer = new IntersectionObserver((entries) => {
+      intersecting = entries[0]?.isIntersecting ?? false;
+      refresh();
+    });
+    if (container.current) observer.observe(container.current);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      observer.disconnect();
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, []);
   const webgl = useMemo(() => {
     try {
-      const c = document.createElement("canvas");
-      return !!(c.getContext("webgl2") || c.getContext("webgl"));
+      const canvas = document.createElement("canvas"),
+        gl = canvas.getContext("webgl2") || canvas.getContext("webgl");
+      const exists = !!gl;
+      gl?.getExtension("WEBGL_lose_context")?.loseContext();
+      return exists;
     } catch {
       return false;
     }
   }, []);
+  const quality =
+    props.quality === "auto"
+      ? small || navigator.hardwareConcurrency <= 4
+        ? "low"
+        : "balanced"
+      : props.quality;
+  const flat = quality === "2d" || !webgl || failed;
+  useEffect(() => {
+    let frame = 0;
+    const active =
+      props.state === "listening" ||
+      (props.state === "speaking" && props.speechSignal?.current);
+    if (!flat || !visible || reduced || !active) {
+      container.current?.style.setProperty("--audio-energy", "0");
+      return;
+    }
+    const update = () => {
+      container.current?.style.setProperty(
+        "--audio-energy",
+        String(props.level.current),
+      );
+      frame = requestAnimationFrame(update);
+    };
+    update();
+    return () => cancelAnimationFrame(frame);
+  }, [flat, visible, reduced, props.state]);
+  const fallback = <BotanicalFlat state={props.state} />;
   return (
     <div
       ref={container}
-      className={`core ${props.state}`}
+      className={`core botanical-core ${props.state} ${!visible ? "dormant" : ""}`}
+      data-core-renderer={flat ? "vector" : "webgl"}
+      data-core-quality={quality}
+      data-core-active={visible ? "true" : "false"}
+      data-motion={reduced ? "reduced" : "animated"}
       data-speech-signal={props.speechSignal?.current ? "pcm" : "events"}
       role="img"
-      aria-label={`Núcleo Saly: ${props.state}`}
+      aria-label={`Coração vegetal da Saly: ${stateLabels[props.state]}`}
     >
-      {props.quality === "2d" || !webgl ? (
-        flat
+      {flat ? (
+        fallback
       ) : (
-        <Boundary fallback={flat}>
-          <Suspense fallback={flat}>
-            <Canvas
-              camera={{ position: [0, 0, 3.8], fov: 42 }}
-              dpr={props.quality === "high" ? [1, 1.8] : [1, 1.2]}
-              gl={{ alpha: true, antialias: props.quality !== "low" }}
-            >
-              <Organic {...props} reduced={reduced} />
-            </Canvas>
+        <Boundary fallback={fallback} onFailure={() => setFailed(true)}>
+          <Suspense fallback={fallback}>
+            <BotanicalCanvas
+              {...props}
+              quality={quality}
+              reduced={reduced}
+              visible={visible}
+              element={container}
+              onFailure={() => setFailed(true)}
+            />
           </Suspense>
         </Boundary>
       )}
-      {props.pulse > 0 && <div key={props.pulse} className="response-pulse" />}
-      {props.state === "speaking" && props.speechSignal?.current && (
-        <div className="speech-waves">
-          <i />
-          <i />
-          <i />
-        </div>
-      )}
-      <div className="core-orbit" />
-      <div className="core-caption">
-        NÚCLEO SALY <span>01 / INTERFACE COGNITIVA</span>
-      </div>
     </div>
   );
 }

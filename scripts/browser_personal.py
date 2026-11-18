@@ -4,6 +4,7 @@ import io
 import json
 import os
 
+from browser_navigation import go
 from browser_support import PASSWORD, test_server
 from PIL import Image
 from playwright.sync_api import expect, sync_playwright
@@ -21,7 +22,7 @@ with test_server(port=8005) as base, sync_playwright() as playwright:
     page.goto(base)
     page.get_by_label("Senha privada", exact=True).fill(PASSWORD)
     page.get_by_role("button", name="Desbloquear", exact=True).click()
-    page.get_by_role("link", name="Compras", exact=True).click()
+    go(page, "Compras")
     page.get_by_role("button", name="+ Nova compra", exact=True).click()
     page.get_by_label("Produto", exact=True).fill("Microscópio E2E")
     page.get_by_label("Preço unitário em reais", exact=True).fill("123,45")
@@ -34,6 +35,7 @@ with test_server(port=8005) as base, sync_playwright() as playwright:
     page.once("dialog", lambda d: d.accept())
     page.get_by_role("button", name="Confirmar compra", exact=True).click()
     page.get_by_role("heading", name="Microscópio E2E", exact=True).wait_for()
+    page.get_by_text("Orçamento e detalhes do mês", exact=True).click()
     page.get_by_label("Orçamento em reais", exact=True).fill("300,00")
     page.once("dialog", lambda d: d.accept())
     page.get_by_role("button", name="Salvar orçamento", exact=True).click()
@@ -59,7 +61,7 @@ with test_server(port=8005) as base, sync_playwright() as playwright:
     page.once("dialog", lambda d: d.accept())
     page.get_by_role("button", name="Confirmar compra", exact=True).click()
     page.get_by_role("heading", name="Microscópio revisado E2E", exact=True).wait_for()
-    page.get_by_role("link", name="Espaço", exact=True).click()
+    go(page, "Espaço")
     page.get_by_role("button", name="+ Nova gaveta", exact=True).click()
     page.get_by_label("Nome da gaveta", exact=True).fill("Ciência E2E")
     page.once("dialog", lambda d: d.accept())
@@ -86,7 +88,7 @@ with test_server(port=8005) as base, sync_playwright() as playwright:
         page.set_viewport_size({"width": 390, "height": 844})
         if destination == "Compras":
             page.get_by_role("button", name="Alternar menu", exact=True).click()
-            page.get_by_role("link", name=destination, exact=True).click()
+            go(page, destination)
         assert page.evaluate("document.documentElement.scrollWidth<=window.innerWidth"), destination
         page.wait_for_function(
             "document.querySelector('.sidebar').getBoundingClientRect().right <= 0.5"

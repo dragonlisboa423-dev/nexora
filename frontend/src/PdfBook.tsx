@@ -8,6 +8,7 @@ import {
   type RenderTask,
 } from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+import { usePageSwipe } from "./page_swipe";
 import { api, put } from "./api";
 GlobalWorkerOptions.workerSrc = workerUrl;
 function OriginalPage({
@@ -128,6 +129,11 @@ export default function PdfBook() {
   const frame = useRef<HTMLDivElement>(null),
     pdf = loaded?.id === documentId ? loaded.pdf : null,
     spread = single ? 1 : 2;
+  const swipe = usePageSwipe({
+    disabled: !pdf,
+    next: () => turn(page + spread),
+    previous: () => turn(page - spread),
+  });
   useEffect(() => {
     const media = matchMedia("(max-width:950px)"),
       change = () => setSingle(media.matches);
@@ -261,7 +267,7 @@ export default function PdfBook() {
     : [];
   return (
     <section className="pdf-book">
-      <Link to="/knowledge">← Voltar ao Centro Smolin</Link>
+      <Link to="/knowledge/documents">← Voltar ao Centro Smolin</Link>
       <h1>{name}</h1>
       <p>
         Páginas renderizadas do arquivo original, com imagens e diagramação
@@ -375,6 +381,7 @@ export default function PdfBook() {
         className={`pdf-book-frame ${vertical ? "no-turn" : ""}`}
         tabIndex={0}
         aria-label="Livro PDF original"
+        {...swipe}
         onKeyDown={(e) => {
           if (e.target !== e.currentTarget) return;
           if (e.key === "ArrowRight") {

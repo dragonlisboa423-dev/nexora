@@ -63,9 +63,9 @@ export function Memories({ notify }: { notify: (s: string) => void }) {
   return (
     <>
       <PageTitle
-        eyebrow="CONTEXTO PERSISTENTE"
+        eyebrow="CENTRO MEMORIAL · MEMÓRIAS PESSOAIS"
         title="Memórias"
-        text="Conhecimento sob seu controle. Armazene, revise e decida o que Saly pode utilizar."
+        text="Preferências, ideias e informações que você escolheu guardar. Diferentes das fontes documentais do Smolin."
       />
       <div className="toolbar">
         <input

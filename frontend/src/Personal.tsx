@@ -2,18 +2,13 @@ import { useEffect, useState } from "react";
 import { api, post, put, download } from "./api";
 import { PageTitle } from "./Panels";
 
-export const money = (cents: number) =>
-  (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-export function cents(value: string): number {
-  if (!/^\d{1,10}([.,]\d{1,2})?$/.test(value))
-    throw new Error(
-      "Use valor positivo com até duas casas decimais, sem separador de milhar.",
-    );
-  const [whole, fraction = ""] = value.replace(",", ".").split(".");
-  const result = Number(whole) * 100 + Number(fraction.padEnd(2, "0"));
-  if (!Number.isSafeInteger(result)) throw new Error("Valor acima do limite.");
-  return result;
-}
+import { money, cents } from "./finance";
+export { money, cents } from "./finance";
+import {
+  PurchaseOverview,
+  SavingsGoals,
+  ProductPhoto,
+} from "./PurchaseDashboard";
 type Data = Record<string, any>;
 const statuses: Record<string, string> = {
   purchased: "Realizada",
@@ -293,6 +288,7 @@ export function Purchases({ notify }: { notify: (s: string) => void }) {
     [month, setMonth] = useState(today().slice(0, 7)),
     [query, setQuery] = useState(""),
     [status, setStatus] = useState(""),
+    [categoryFilter, setCategoryFilter] = useState(""),
     [draft, setDraft] = useState<Data | null>(null),
     [preview, setPreview] = useState<Data | null>(null),
     [busy, setBusy] = useState(false),
@@ -328,6 +324,7 @@ export function Purchases({ notify }: { notify: (s: string) => void }) {
   const filtered = items.filter(
     (p) =>
       (!status || p.status === status) &&
+      (!categoryFilter || p.category === categoryFilter) &&
       `${p.product} ${p.store_name} ${p.category}`
         .toLocaleLowerCase()
         .includes(query.toLocaleLowerCase()) &&
@@ -337,11 +334,21 @@ export function Purchases({ notify }: { notify: (s: string) => void }) {
   return (
     <>
       <PageTitle
-        eyebrow="CONTROLE MANUAL"
+        eyebrow="ROTINA · COMPRAS E DESEJOS"
         title="Compras"
-        text="Compras, desejos e orçamento sob seu controle. Entrada manual e comprovantes privados."
+        text="O que você deseja. O que já chegou. E espaço para seus próximos planos."
       />
-      <div className="toolbar">
+      {summary && (
+        <PurchaseOverview summary={summary} items={items} month={month} />
+      )}
+      <SavingsGoals notify={notify} />
+      <div className="section-heading">
+        <div>
+          <small>SUAS ESCOLHAS</small>
+          <h2>Compras e desejos</h2>
+        </div>
+      </div>
+      <div className="toolbar purchase-filters">
         <label>
           Período das compras
           <input
@@ -365,6 +372,18 @@ export function Purchases({ notify }: { notify: (s: string) => void }) {
             ))}
           </select>
         </label>
+        <label>
+          Categoria de compras
+          <select
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+          >
+            <option value="">Todas as categorias</option>
+            {[...new Set(items.map((p) => p.category))].sort().map((c) => (
+              <option key={c}>{c}</option>
+            ))}
+          </select>
+        </label>
         <button
           onClick={() => {
             setDraft(emptyPurchase());
@@ -384,7 +403,8 @@ export function Purchases({ notify }: { notify: (s: string) => void }) {
         </button>
       </div>
       {summary && (
-        <section className="card">
+        <details className="card purchase-budget-settings">
+          <summary>Orçamento e detalhes do mês</summary>
           <h2>Resumo de {month}</h2>
           <div className="stats">
             <span>
@@ -459,7 +479,7 @@ export function Purchases({ notify }: { notify: (s: string) => void }) {
               </p>
             ))}
           </details>
-        </section>
+        </details>
       )}
       {draft && (
         <section className="card" role="region" aria-label="Editor de compra">
@@ -635,68 +655,97 @@ export function Purchases({ notify }: { notify: (s: string) => void }) {
           )}
         </section>
       )}
-      <div className="personal-grid">
+      <div className="personal-grid product-grid">
         {filtered.map((item) => (
-          <article className="card" key={item.id}>
-            <h2>{item.product}</h2>
-            <p>
-              {statuses[item.status]} · {item.category}
-            </p>
-            <strong>{money(item.total_cents)}</strong>
-            <p>
-              {item.quantity} unidade(s) · {item.store_name} ·{" "}
-              {item.purchased_on ?? "Sem compra realizada"}
-            </p>
-            <p>{item.notes}</p>
-            <div className="toolbar">
-              <button
-                onClick={() => {
-                  setDraft(item);
-                  setPreview(null);
-                }}
-              >
-                Editar {item.product}
-              </button>
-              <button
-                onClick={async () => {
-                  if (
-                    !confirm(
-                      "Excluir compra, imagem privada e cancelar seus alarmes?",
+          <article className="card product-card" key={item.id}>
+            <ProductPhoto
+              item={item}
+              saved={() => load().catch((e) => notify(e.message))}
+              notify={notify}
+            />
+            <div className="product-card-copy">
+              <h2>{item.product}</h2>
+              <p>
+                {statuses[item.status]} · {item.category}
+              </p>
+              <strong>{money(item.total_cents)}</strong>
+              <p>
+                {item.quantity} unidade(s) · {item.store_name} ·{" "}
+                {item.purchased_on ?? "Sem compra realizada"}
+              </p>
+              <p>{item.notes}</p>
+              <div className="toolbar">
+                <button
+                  onClick={() => {
+                    setDraft(item);
+                    setPreview(null);
+                  }}
+                >
+                  Editar {item.product}
+                </button>
+                <button
+                  onClick={async () => {
+                    if (
+                      !confirm(
+                        "Excluir compra, imagem privada e cancelar seus alarmes?",
+                      )
                     )
-                  )
-                    return;
-                  try {
-                    await api(
-                      `/purchases/${item.id}?confirm=true&base_revision=${item.revision}`,
-                      { method: "DELETE" },
-                    );
-                    await load();
-                  } catch (e) {
-                    notify((e as Error).message);
-                  }
-                }}
-              >
-                Excluir {item.product}
-              </button>
+                      return;
+                    try {
+                      await api(
+                        `/purchases/${item.id}?confirm=true&base_revision=${item.revision}`,
+                        { method: "DELETE" },
+                      );
+                      await load();
+                    } catch (e) {
+                      notify((e as Error).message);
+                    }
+                  }}
+                >
+                  Excluir {item.product}
+                </button>
+              </div>
+              <Receipt
+                key={item.id}
+                item={item}
+                saved={() => load().catch((e) => notify(e.message))}
+                notify={notify}
+              />
+              <PurchaseAlerts
+                item={item}
+                saved={() => load().catch((e) => notify(e.message))}
+                notify={notify}
+              />
             </div>
-            <Receipt
-              key={item.id}
-              item={item}
-              saved={() => load().catch((e) => notify(e.message))}
-              notify={notify}
-            />
-            <PurchaseAlerts
-              item={item}
-              saved={() => load().catch((e) => notify(e.message))}
-              notify={notify}
-            />
           </article>
         ))}
       </div>
-      {!filtered.length && <p>Nenhuma compra encontrada para estes filtros.</p>}
+      {!filtered.length && (
+        <div className="purchase-empty">
+          <h3>
+            {items.length
+              ? "Nada nesta seleção."
+              : "Cada escolha tem seu tempo."}
+          </h3>
+          <p>
+            {items.length
+              ? "Experimente outro período ou categoria."
+              : "Adicione sua primeira compra ou desejo. Depois, escolha uma foto para reconhecê-lo de relance."}
+          </p>
+          <button
+            className="secondary"
+            onClick={() => {
+              setDraft(emptyPurchase());
+              setPreview(null);
+            }}
+          >
+            Adicionar um item
+          </button>
+        </div>
+      )}
       <p>
-        Dados novos desta área ainda não estão incluídos no cofre offline.
-        Nenhuma informação financeira é copiada para o dispositivo
+        Registros e valores são informados por você. O cofre local permite
+        escolher compras para consulta offline; fotos e metas não são copiadas
         automaticamente.
       </p>
     </>

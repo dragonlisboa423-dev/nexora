@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { BookOpen, Leaf } from "lucide-react";
+import { usePageSwipe } from "./page_swipe";
 import { useNavigate } from "react-router-dom";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -933,9 +935,13 @@ export default function Library({
     [notes, setNotes] = useState<Data[]>([]),
     [note, setNote] = useState(""),
     [autonarrate, setAutonarrate] = useState(false),
-    [saving, setSaving] = useState(false);
+    [saving, setSaving] = useState(false),
+    [direction, setDirection] = useState("next");
   const navigate = useNavigate(),
-    progressRef = useRef(progress),
+    progressRef = useRef<{ key: string; value: Data }>({
+      key: "",
+      value: progress,
+    }),
     queue = useRef(Promise.resolve()),
     active = useRef("");
   const pages: BookPage[] =
@@ -944,6 +950,11 @@ export default function Library({
       ) ?? [],
     page = pages[index],
     spread = small ? 1 : 2;
+  const swipe = usePageSwipe({
+    disabled: vertical || !book || editor,
+    next: () => turn(index + spread),
+    previous: () => turn(index - spread),
+  });
   useEffect(() => {
     api("/books")
       .then(setCatalog)
@@ -969,7 +980,7 @@ export default function Library({
       active.current = id;
       setBook(data);
       setEdition(selected);
-      progressRef.current = p;
+      progressRef.current = { key: id, value: p };
       setProgress(p);
       setNotes(n);
       const list = data.chapters.flatMap((c: Data) => c.pages);
@@ -989,11 +1000,12 @@ export default function Library({
   function updateProgress(updater: (p: Data) => Data) {
     const key = book?.id;
     if (!key) return;
+    const session = progressRef.current;
+    if (session.key !== key) return;
     queue.current = queue.current
       .catch(() => {})
       .then(async () => {
-        if (active.current !== key) return;
-        const current = progressRef.current,
+        const current = session.value,
           changed = updater(current);
         const body = {
           current_page_id: changed.current_page_id ?? null,
@@ -1003,16 +1015,17 @@ export default function Library({
           base_revision: current.revision ?? 0,
         };
         const saved = await put(`/books/${key}/progress`, body);
-        if (active.current === key) {
-          progressRef.current = saved;
+        session.value = saved;
+        if (active.current === key && progressRef.current === session)
           setProgress(saved);
-        }
       })
       .catch((e) => notify(e.message));
   }
   function turn(next: number) {
     stop();
     const actual = Math.max(0, Math.min(pages.length - 1, next));
+    if (actual === index) return;
+    setDirection(actual > index ? "next" : "previous");
     setIndex(actual);
     const current = pages[actual];
     if (current) {
@@ -1041,6 +1054,11 @@ export default function Library({
       });
       setBook(result);
       active.current = result.id;
+      if (progressRef.current.key !== result.id)
+        progressRef.current = {
+          key: result.id,
+          value: progressRef.current.value,
+        };
       setCatalog(await api("/books"));
       notify("Versão manual salva. A publicação depende de revisão explícita.");
     } catch (e) {
@@ -1138,9 +1156,9 @@ export default function Library({
   return (
     <>
       <PageTitle
-        eyebrow="CONHECIMENTO EM CONSTRUÇÃO"
+        eyebrow="CONHECIMENTO · SUA ESTANTE"
         title="Biblioteca"
-        text="Livros de autoria manual, leitura interativa e progresso privado. Publicação sob seu controle."
+        text="Um capítulo de cada vez. Livros, descobertas e um lugar para continuar."
       />
       {!book ? (
         <>
@@ -1155,7 +1173,7 @@ export default function Library({
                   completed_pages: [],
                   quiz_attempts: {},
                 };
-                progressRef.current = initial;
+                progressRef.current = { key: "", value: initial };
                 setProgress(initial);
                 setNotes([]);
                 setEditor(true);
@@ -1179,6 +1197,12 @@ export default function Library({
                     alt=""
                   />
                 )}
+                {!item.cover_asset_id && (
+                  <div className="cover-botany" aria-hidden="true">
+                    <Leaf size={76} strokeWidth={0.65} />
+                    <Leaf size={44} strokeWidth={0.7} />
+                  </div>
+                )}
                 <small>
                   {item.subject} ·{" "}
                   {item.publication_status === "review"
@@ -1189,7 +1213,7 @@ export default function Library({
                 <p>{item.subtitle}</p>
                 <p>{item.author}</p>
                 <button disabled={saving} onClick={() => void open(item.id)}>
-                  Abrir rascunho de {item.title}
+                  <BookOpen size={15} /> Ler {item.title}
                 </button>
                 {item.published_version_id && (
                   <button onClick={() => void open(item.id, "published")}>
@@ -1205,10 +1229,6 @@ export default function Library({
               inicial de Biologia quando disponível.
             </p>
           )}
-          <p>
-            Química, Física, Matemática e Psicologia: disciplinas futuras, sem
-            livros publicados nesta etapa.
-          </p>
         </>
       ) : (
         <>
@@ -1223,82 +1243,87 @@ export default function Library({
             >
               Voltar ao catálogo
             </button>
-            <button
-              onClick={async () => {
-                stop();
-                if (edition === "published" && book.id) {
-                  await open(book.id);
-                  setEditor(true);
-                } else setEditor(!editor);
-              }}
-            >
-              Editar rascunho manual
-            </button>
-            {book.id && (
-              <>
-                <button
-                  onClick={() =>
-                    api(`/books/${book.id}/export`)
-                      .then((data) => download("saly-livro.json", data))
-                      .catch((e) => notify(e.message))
-                  }
-                >
-                  Exportar livro
-                </button>
-                <button
-                  disabled={
-                    saving ||
-                    book.publication_status !== "review" ||
-                    edition === "published"
-                  }
-                  onClick={async () => {
-                    if (
-                      !confirm(
-                        "Publicar a última versão SALVA e revisada? Alterações ainda não salvas não serão incluídas.",
-                      )
-                    )
-                      return;
-                    try {
-                      await post(`/books/${book.id}/publish`, {
-                        base_revision: book.revision,
-                        confirm: true,
-                      });
-                      if (book.id) await open(book.id, "published");
-                      setCatalog(await api("/books"));
-                    } catch (e) {
-                      notify((e as Error).message);
-                    }
-                  }}
-                >
-                  Publicar versão revisada
-                </button>
+            <details className="book-options">
+              <summary>Opções do livro</summary>
+              <div className="toolbar">
                 <button
                   onClick={async () => {
-                    if (
-                      !confirm(
-                        "Excluir livro, versões, mídias, anotações e progresso?",
-                      )
-                    )
-                      return;
-                    try {
-                      await api(
-                        `/books/${book.id}?base_revision=${book.revision}&confirm=true`,
-                        { method: "DELETE" },
-                      );
-                      setBook(null);
-                      active.current = "";
-                      setCatalog(await api("/books"));
-                    } catch (e) {
-                      notify((e as Error).message);
-                    }
+                    stop();
+                    if (edition === "published" && book.id) {
+                      await open(book.id);
+                      setEditor(true);
+                    } else setEditor(!editor);
                   }}
                 >
-                  Excluir livro
+                  Editar rascunho manual
                 </button>
-              </>
-            )}
+                {book.id && (
+                  <>
+                    <button
+                      onClick={() =>
+                        api(`/books/${book.id}/export`)
+                          .then((data) => download("saly-livro.json", data))
+                          .catch((e) => notify(e.message))
+                      }
+                    >
+                      Exportar livro
+                    </button>
+                    <button
+                      disabled={
+                        saving ||
+                        book.publication_status !== "review" ||
+                        edition === "published"
+                      }
+                      onClick={async () => {
+                        if (
+                          !confirm(
+                            "Publicar a última versão SALVA e revisada? Alterações ainda não salvas não serão incluídas.",
+                          )
+                        )
+                          return;
+                        try {
+                          await post(`/books/${book.id}/publish`, {
+                            base_revision: book.revision,
+                            confirm: true,
+                          });
+                          if (book.id) await open(book.id, "published");
+                          setCatalog(await api("/books"));
+                        } catch (e) {
+                          notify((e as Error).message);
+                        }
+                      }}
+                    >
+                      Publicar versão revisada
+                    </button>
+                    <button
+                      onClick={async () => {
+                        if (
+                          !confirm(
+                            "Excluir livro, versões, mídias, anotações e progresso?",
+                          )
+                        )
+                          return;
+                        try {
+                          await api(
+                            `/books/${book.id}?base_revision=${book.revision}&confirm=true`,
+                            { method: "DELETE" },
+                          );
+                          setBook(null);
+                          active.current = "";
+                          setCatalog(await api("/books"));
+                        } catch (e) {
+                          notify((e as Error).message);
+                        }
+                      }}
+                    >
+                      Excluir livro
+                    </button>
+                  </>
+                )}
+              </div>
+            </details>
           </div>
-          <p>
+          <p className="edition-label">
             Exibindo{" "}
             {edition === "published"
               ? "edição publicada"
@@ -1389,45 +1414,50 @@ export default function Library({
                 }{" "}
                 de {pages.length} páginas concluídas.
               </p>
-              <div className="toolbar" aria-label="Narração do livro">
-                <button
-                  disabled={!page}
-                  onClick={() => {
-                    if (page)
-                      speak(
-                        page.blocks
-                          .filter((b) => b.type === "text")
-                          .map((b) => b.text)
-                          .join("\n")
-                          .slice(0, 3000),
-                      );
-                  }}
-                >
-                  Narrar página atual
-                </button>
-                <button onClick={pause} disabled={speechState !== "speaking"}>
-                  Pausar narração
-                </button>
-                <button onClick={resume} disabled={speechState !== "paused"}>
-                  Continuar narração
-                </button>
-                <button onClick={stop}>Parar narração</button>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={autonarrate}
-                    onChange={(e) => setAutonarrate(e.target.checked)}
-                  />
-                  Narrar ao mudar de página
-                </label>
-                <small>
-                  Voz e velocidade selecionadas na Biblioteca de vozes. Leitura
-                  de até 3.000 caracteres por acionamento; sem avanço
-                  automático.
-                </small>
-              </div>
+              <details className="reader-narration">
+                <summary>Ouvir este livro</summary>
+                <div className="toolbar" aria-label="Narração do livro">
+                  <button
+                    disabled={!page}
+                    onClick={() => {
+                      if (page)
+                        speak(
+                          page.blocks
+                            .filter((b) => b.type === "text")
+                            .map((b) => b.text)
+                            .join("\n")
+                            .slice(0, 3000),
+                        );
+                    }}
+                  >
+                    Narrar página atual
+                  </button>
+                  <button onClick={pause} disabled={speechState !== "speaking"}>
+                    Pausar narração
+                  </button>
+                  <button onClick={resume} disabled={speechState !== "paused"}>
+                    Continuar narração
+                  </button>
+                  <button onClick={stop}>Parar narração</button>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={autonarrate}
+                      onChange={(e) => setAutonarrate(e.target.checked)}
+                    />
+                    Narrar ao mudar de página
+                  </label>
+                  <small>
+                    Voz e velocidade selecionadas na Biblioteca de vozes.
+                    Leitura de até 3.000 caracteres por acionamento; sem avanço
+                    automático.
+                  </small>
+                </div>
+              </details>
               <div
                 className={vertical ? "book-flow" : "book-spread"}
+                data-direction={direction}
+                {...swipe}
                 key={vertical ? "flow" : index}
                 tabIndex={0}
                 aria-label="Leitor de livro"

@@ -162,7 +162,9 @@ with sync_playwright() as playwright:
         time.sleep(0.05)
     else:
         page.screenshot(path="/tmp/saly-offline-failure.png", full_page=True)
-        raise AssertionError("Offline creation did not sync: " + str(page.get_by_role("alert").all_text_contents()))
+        raise AssertionError(
+            "Offline creation did not sync: " + str(page.get_by_role("alert").all_text_contents())
+        )
     created = next(record for record in records if record["content"] == "CREATED_WHILE_OFFLINE")
     expect(page.get_by_role("button", name="Sincronizar agora")).to_be_enabled()
     page.get_by_role("button", name="Sincronizar agora").click()

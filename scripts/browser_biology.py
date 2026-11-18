@@ -3,6 +3,7 @@
 import json
 import os
 
+from browser_navigation import go
 from browser_support import PASSWORD, test_server
 from playwright.sync_api import expect, sync_playwright
 
@@ -20,10 +21,11 @@ with test_server(port=8007) as base, sync_playwright() as playwright:
     page.get_by_label("Senha privada", exact=True).fill(PASSWORD)
     page.get_by_role("button", name="Desbloquear", exact=True).click()
     page.get_by_role("button", name="Alternar menu", exact=True).click()
-    page.get_by_role("link", name="Biblioteca", exact=True).click()
+    go(page, "Biblioteca")
     page.get_by_role(
-        "button", name="Abrir rascunho de Biologia — Volume I: Fundamentos da Vida", exact=True
+        "button", name="Ler Biologia — Volume I: Fundamentos da Vida", exact=True
     ).click()
+    page.get_by_text("Opções do livro", exact=True).click()
     expect(page.get_by_role("button", name="Publicar versão revisada", exact=True)).to_be_disabled()
     page.get_by_label(
         "A reprodução sustenta linhagens, mas um indivíduo estéril pode estar vivo.", exact=True

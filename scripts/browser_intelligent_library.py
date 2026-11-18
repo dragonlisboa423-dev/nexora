@@ -9,6 +9,7 @@ import os
 import shutil
 import zipfile
 
+from browser_navigation import go
 from browser_support import PASSWORD, ROOT, test_server
 from playwright.sync_api import expect, sync_playwright
 from pypdf import PdfWriter
@@ -67,7 +68,7 @@ with test_server(port=8011, extra_environment=environment) as base, sync_playwri
     page.goto(base)
     page.get_by_label("Senha privada", exact=True).fill(PASSWORD)
     page.get_by_role("button", name="Desbloquear", exact=True).click()
-    page.get_by_role("link", name="Centro Smolin", exact=True).click()
+    go(page, "Centro Smolin")
     page.get_by_label("Importar documentos", exact=True).set_input_files(
         [
             {"name": "genetica.epub", "mimeType": "application/epub+zip", "buffer": epub()},

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { usePageSwipe } from "./page_swipe";
 import { api, put } from "./api";
 
 export default function TextBook() {
@@ -36,9 +37,14 @@ export default function TextBook() {
       .catch((e) => setError(e.message));
   }
   const section = doc?.pages?.[page - 1];
+  const swipe = usePageSwipe({
+    disabled: !doc,
+    next: () => turn(page + 1),
+    previous: () => turn(page - 1),
+  });
   return (
     <section className="text-book card">
-      <Link to="/knowledge">← Centro Smolin</Link>
+      <Link to="/knowledge/documents">← Centro Smolin</Link>
       {error && <p role="alert">{error}</p>}
       <h1>{doc?.title || doc?.name || "Abrindo texto…"}</h1>
       <p>{doc?.author || "Autoria não informada"}</p>
@@ -76,7 +82,11 @@ export default function TextBook() {
           <p role="status">
             Seção {page} de {doc.pages.length}
           </p>
-          <article aria-label="Texto do capítulo">
+          <article
+            className="textual-leaf"
+            aria-label="Texto do capítulo"
+            {...swipe}
+          >
             <h2>{section?.label}</h2>
             <div style={{ whiteSpace: "pre-wrap" }}>{section?.content}</div>
           </article>

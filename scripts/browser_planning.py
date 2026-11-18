@@ -4,6 +4,7 @@ import json
 import os
 from datetime import UTC, datetime, timedelta
 
+from browser_navigation import go
 from browser_support import PASSWORD, test_server
 from playwright.sync_api import expect, sync_playwright
 
@@ -27,7 +28,7 @@ with test_server(port=8004) as base, sync_playwright() as playwright:
     page.get_by_label("Senha privada", exact=True).fill(PASSWORD)
     page.get_by_role("button", name="Desbloquear", exact=True).click()
     page.get_by_role("heading", name="Olá. Eu sou Saly.").wait_for()
-    page.get_by_role("link", name="Agenda", exact=True).click()
+    go(page, "Agenda")
     page.get_by_role("heading", name="Agenda inteligente", exact=True).wait_for()
     day = (datetime.now(UTC) + timedelta(days=1)).date().isoformat()
     page.get_by_label("Data de referência", exact=True).fill(day)
@@ -61,7 +62,7 @@ with test_server(port=8004) as base, sync_playwright() as playwright:
     page.get_by_role("button", name="Biologia revisada E2E", exact=False).first.wait_for()
     page.get_by_label("Visualização da agenda", exact=True).select_option("month")
     page.get_by_role("button", name="Biologia revisada E2E", exact=False).first.wait_for()
-    page.get_by_role("link", name="Alarmes", exact=True).click()
+    go(page, "Alarmes")
     page.get_by_role("heading", name="Alarmes", exact=True).wait_for()
     assert context.request.get(base + "/api/notifications/capabilities").json()[
         "scheduler_observed"
