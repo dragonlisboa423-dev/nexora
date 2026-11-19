@@ -233,3 +233,7 @@ Documentação técnica e limites: [arquitetura](docs/architecture.md), [valida�
 A evolução da biblioteca, retomada de importações, OCR opcional, recuperação LSA local, mapa com fontes e conversa por voz está documentada em [Biblioteca e voz](docs/SALY_LIBRARY_VOICE_EVOLUTION.md), com os limites reais de Android/offline.
 
 A [etapa visual SALY 2.0](docs/SALY_2_0_VISUAL.md) organiza Conversa, Conhecimento, Mídia e Rotina, com coração vegetal procedural, Biblioteca por toque e compras visuais. Preserva os mecanismos de IA e documenta resultados, rotas e limites.
+
+### Atualização integrada: modelos locais, núcleo e ZIP
+
+Veja o [relatório verificável e instruções de execução](docs/SALY_INTEGRATED_UPDATE_2026.md). A ponte Ollama e o seletor foram implementados; os quatro pesos não puderam ser baixados nesta rede e não são apresentados como modelos funcionais.

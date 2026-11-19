@@ -2,14 +2,16 @@ import { useEffect, useMemo, useRef } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import { Bloom } from "./CoreBloom";
 import type { SalyState } from "./api";
 import type { CoreProps as Props } from "./Core";
 // Restored selectively from f03426b:frontend/src/Core.tsx.
-const vertex = `varying vec3 p; varying vec3 vNormal; varying vec3 vView; uniform float t; uniform float energy;
+const vertex = `varying vec3 p; varying vec3 vNormal; varying vec3 vView; uniform float t; uniform float energy; uniform float beatTime; uniform float beatStrength;
 float fluid(vec3 q){return sin(q.x*2.8+t*.38)*cos(q.y*3.4-t*.29)*sin(q.z*2.6+t*.23)+.45*sin(q.y*5.+q.x*3.-t*.42);}
-void main(){float displacement=fluid(position)*(.12+energy*.09);vec3 v=position*(1.+displacement);p=v;vNormal=normalize(normalMatrix*normal);vec4 mv=modelViewMatrix*vec4(v,1.);vView=normalize(-mv.xyz);gl_Position=projectionMatrix*mv;}`;
-const fragment = `varying vec3 p;varying vec3 vNormal;varying vec3 vView;uniform float t;uniform float energy;uniform float stress;
-void main(){float fresnel=pow(1.-abs(dot(normalize(vNormal),vView)),2.2);float folds=sin(p.y*5.+sin(p.x*4.+t*.3)*1.3+sin(p.z*5.-t*.28));float vein=pow(.5+.5*sin(folds*3.+p.z*2.),5.);float caustic=pow(.5+.5*sin(p.x*5.+p.y*3.+sin(p.z*4.+t*.2)),12.);vec3 deep=vec3(.015,.12,.09);vec3 cyan=vec3(.12,.68,.43);vec3 light=vec3(.64,1.,.72);vec3 color=mix(deep,cyan,.2+vein*.48);color+=light*(fresnel*.75+caustic*.32)*(1.+energy*.6);color=mix(color,vec3(.5,.39,.22),stress*.16);gl_FragColor=vec4(color,.65+fresnel*.3);}`;
+float heartbeat(vec3 q){float phase=beatTime-q.y*.12-q.x*.055+sin(q.z*2.)*.04;float primary=pow(.5+.5*sin(phase*6.2831853),16.);float secondary=.38*pow(.5+.5*sin((phase-.18)*6.2831853),28.);return primary+secondary;}
+void main(){float regional=heartbeat(position);float displacement=fluid(position)*(.12+energy*.09)+beatStrength*(regional-.18)*(.025+.012*sin(position.y*3.+position.z));vec3 v=position*(1.+displacement);p=v;vNormal=normalize(normalMatrix*normal);vec4 mv=modelViewMatrix*vec4(v,1.);vView=normalize(-mv.xyz);gl_Position=projectionMatrix*mv;}`;
+const fragment = `varying vec3 p;varying vec3 vNormal;varying vec3 vView;uniform float t;uniform float energy;uniform float stress;uniform float beatTime;uniform float beatStrength;
+void main(){float fresnel=pow(1.-abs(dot(normalize(vNormal),vView)),2.2);float folds=sin(p.y*5.+sin(p.x*4.+t*.3)*1.3+sin(p.z*5.-t*.28));float vein=pow(.5+.5*sin(folds*3.+p.z*2.),5.);float caustic=pow(.5+.5*sin(p.x*5.+p.y*3.+sin(p.z*4.+t*.2)),12.);vec3 deep=vec3(.015,.12,.09);vec3 cyan=vec3(.12,.68,.43);vec3 light=vec3(.64,1.,.72);vec3 color=mix(deep,cyan,.2+vein*.48);color+=light*(fresnel*.75+caustic*.32)*(1.+energy*.6);float circulation=pow(.5+.5*sin(p.y*8.-t*1.7+sin(p.x*4.+p.z*3.)),18.);float beatGlow=pow(.5+.5*sin((beatTime-p.y*.12)*6.2831853),16.);color+=vec3(.25,.75,.12)*beatStrength*(circulation*.1+beatGlow*caustic*.32);color=mix(color,vec3(.5,.39,.22),stress*.16);gl_FragColor=vec4(color,.65+fresnel*.3);}`;
 function Organic({
   state,
   level,
@@ -18,11 +20,13 @@ function Organic({
   pulse,
   speechSignal,
   element,
+  motion,
 }: {
   element: React.RefObject<HTMLDivElement | null>;
   state: SalyState;
   level: React.MutableRefObject<number>;
   quality: string;
+  motion?: { intensity: number; speed: number };
   reduced: boolean;
   pulse: number;
   speechSignal?: React.MutableRefObject<boolean>;
@@ -39,6 +43,8 @@ function Organic({
           t: { value: 0 },
           energy: { value: 0 },
           stress: { value: 0 },
+          beatTime: { value: 0 },
+          beatStrength: { value: 0 },
         },
         vertexShader: vertex,
         fragmentShader: fragment,
@@ -121,6 +127,13 @@ function Organic({
       energy,
       0.13,
     );
+    material.uniforms.beatTime.value = reduced
+      ? 0
+      : t * 0.72 * (motion?.speed ?? 1);
+    material.uniforms.beatStrength.value = reduced
+      ? 0
+      : (motion?.intensity ?? 0.65) *
+        (1 + material.uniforms.energy.value * 0.8);
     material.uniforms.t.value = reduced
       ? 0
       : state === "offline"
@@ -242,7 +255,7 @@ function Fibres({
     () =>
       new THREE.ShaderMaterial({
         vertexShader: vertex,
-        fragmentShader: `varying vec3 p;uniform float t;uniform float energy;void main(){float flow=pow(.5+.5*sin(p.y*7.-t*1.2),5.);gl_FragColor=vec4(.44,.88,.54,.12+flow*(.08+energy*.25));}`,
+        fragmentShader: `varying vec3 p;uniform float t;uniform float energy;void main(){float flow=pow(.5+.5*sin(p.y*7.-t*1.2+sin(p.z*5.+t*.19)),8.);gl_FragColor=vec4(.44,.88,.54,.12+flow*(.1+energy*.25));}`,
         uniforms: materialTime.uniforms,
         transparent: true,
         depthWrite: false,
@@ -289,6 +302,9 @@ export default function BotanicalCanvas(
       }}
     >
       <Organic {...props} />
+      {quality === "high" && !reduced && visible && (
+        <Bloom element={props.element} />
+      )}
     </Canvas>
   );
 }

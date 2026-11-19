@@ -145,7 +145,7 @@ def test_structured_text_office_epub_and_archive_are_real_extractions(client):
             package({"content.xml": "<document><p>Ecossistema</p></document>"}),
             "Ecossistema",
         ),
-        ("pacote.zip", package({"referencia.txt": "not read automatically"}), "referencia.txt"),
+        ("pacote.zip", package({"referencia.txt": "Conteúdo interno indexado"}), "Conteúdo interno indexado"),
     ]
     for name, raw, expected in samples:
         doc = finished(client, send(client, raw, name)["id"])

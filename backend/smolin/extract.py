@@ -12,6 +12,9 @@ from .media_text import extract_media, ocr
 
 
 def extract(path, maximum, kind):
+    if kind == "archive":
+        from .archives import extract_archive
+        return extract_archive(path, maximum)
     if kind == "pdf_ocr":
         from .ocr_pdf import extract_pdf_ocr
 

@@ -1,3 +1,5 @@
+import { CoreMotion } from "./CoreMotion";
+import { LocalModels } from "./LocalModels";
 import { ModelConnection } from "./ModelConnection";
 import { Laboratory } from "./Laboratory";
 import { MemoryImport } from "./MemoryImport";
@@ -835,6 +837,8 @@ export function SettingsPanel({
       {(!section || section === "system") && (
         <>
           <ModelConnection health={health} />
+          <LocalModels notify={notify} />
+          <CoreMotion />
           <CoreImport notify={notify} />
         </>
       )}

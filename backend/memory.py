@@ -31,10 +31,11 @@ async def index_memory(key):
         store.audit("embedding_error", "Indexação semântica de memória indisponível: " + key)
 
 
-async def search_memories(query="", usable=False, category=""):
+async def search_memories(query="", usable=False, category="", remote_allowed=True):
     lexical = store.search_memories(query, usable, category)
     if (
-        not query
+        not remote_allowed
+        or not query
         or not embedding_provider.configured
         or not store.setting("preferences", {}).get("privacy", {}).get("remoteConsent")
     ):

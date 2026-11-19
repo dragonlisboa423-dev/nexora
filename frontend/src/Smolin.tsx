@@ -1,3 +1,4 @@
+import { ArchiveTree } from "./ArchiveTree";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { KnowledgeMap } from "./KnowledgeMap";
@@ -649,6 +650,7 @@ export function Smolin({
                   : "Fala ainda não transcrita."}
               </p>
             )}
+            {d.kind === "archive" && <ArchiveTree id={d.id} notify={notify} />}
             {d.kind === "audio" && (
               <audio
                 controls

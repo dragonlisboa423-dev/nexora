@@ -24,6 +24,7 @@ FIELDS = (
     "empty_pages",
     "revision",
     "text_size",
+    "reserved_bytes",
 )
 
 

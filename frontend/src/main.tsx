@@ -1,3 +1,4 @@
+import { LocalModels } from "./LocalModels";
 import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
@@ -103,6 +104,8 @@ type Message = {
   role: string;
   content: string;
   partial?: boolean;
+  model?: string;
+  provider?: string;
   sources?: any[];
   verification?: Verification;
 };
@@ -309,13 +312,22 @@ function App() {
     void refreshHistory();
     const check = () =>
       !document.hidden &&
-      api("/health")
+      api(
+        "/health" +
+          (conversation
+            ? "?conversation_id=" + encodeURIComponent(conversation)
+            : ""),
+      )
         .then(setHealth)
         .catch(() => setHealth(null));
     void check();
     const timer = setInterval(check, 15000);
-    return () => clearInterval(timer);
-  }, [auth]);
+    window.addEventListener("saly-model-changed", check);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener("saly-model-changed", check);
+    };
+  }, [auth, conversation]);
   useEffect(() => {
     bottom.current?.scrollIntoView({
       behavior: matchMedia("(prefers-reduced-motion: reduce)").matches
@@ -351,7 +363,7 @@ function App() {
     e.preventDefault();
     const draft = forced ?? input;
     if (!draft.trim() || busy) return;
-    if (!prefs?.privacy.remoteConsent) {
+    if (health?.provider !== "ollama" && !prefs?.privacy.remoteConsent) {
       if (
         !prefs ||
         !confirm(
@@ -449,6 +461,8 @@ function App() {
                 content: answer,
                 sources: currentSources,
                 verification: event.verification,
+                model: event.model,
+                provider: event.provider,
               },
             ]);
             begun = true;
@@ -780,6 +794,20 @@ function App() {
                     className="conversation"
                     aria-label="Conversa com Saly"
                   >
+                    <LocalModels
+                      conversation={conversation}
+                      busy={busy}
+                      notify={setError}
+                      changed={() => {
+                        void api(
+                          "/health" +
+                            (conversation
+                              ? "?conversation_id=" +
+                                encodeURIComponent(conversation)
+                              : ""),
+                        ).then(setHealth);
+                      }}
+                    />
                     <div className="messages" aria-live="polite">
                       {messages.map((m, i) => (
                         <article className={`message ${m.role}`} key={i}>
@@ -789,7 +817,10 @@ function App() {
                           <div>
                             <small>
                               {m.role === "user" ? "VOCÊ" : "SALY"}{" "}
-                              {m.partial ? "· PARCIAL" : ""}
+                              {m.partial ? "· PARCIAL" : ""}{" "}
+                              {m.model
+                                ? `· ${m.provider || ""} / ${m.model}`
+                                : ""}
                             </small>
                             <div className="markdown">
                               <Markdown
@@ -988,7 +1019,10 @@ function App() {
                                 audio.stopSpeech();
                                 return;
                               }
-                              if (!prefs?.privacy.remoteConsent) {
+                              if (
+                                health?.provider !== "ollama" &&
+                                !prefs?.privacy.remoteConsent
+                              ) {
                                 setError(
                                   "Autorize o provedor remoto em Privacidade antes do modo de voz.",
                                 );

@@ -26,6 +26,7 @@ from .core.policy import context_message
 from .feature_lab import run_feature_checks
 from .imports import MemoryImport, validation_details
 from .library import router as library_router
+from .llm import ollama
 from .llm.connection import verify_connection
 from .llm.provider import Provider, ProviderError
 from .media import recover_jobs
@@ -325,10 +326,57 @@ def save_settings(body: Preferences, _=Depends(owner)):
     return data
 
 
-@app.get("/api/health")
-async def health(_=Depends(owner)):
+class ModelChoice(BaseModel):
+    model: str = Field(max_length=80)
+    conversation_id: str | None = None
+
+
+@app.get("/api/local-models")
+async def local_models(conversation_id: str | None = None, _=Depends(owner)):
+    conversation = store.get("conversations", conversation_id) if conversation_id else None
+    if conversation_id and not conversation:
+        raise HTTPException(404, "Conversa não encontrada")
     return {
-        **await provider.health(),
+        **await ollama.catalog(),
+        "selected": ollama.selection(conversation),
+        "default": ollama.selection(),
+    }
+
+
+@app.put("/api/local-models/selection")
+def select_model(body: ModelChoice, _=Depends(owner)):
+    if body.model not in (*ollama.MODELS, "remote"):
+        raise HTTPException(422, "Modelo não permitido")
+    if body.conversation_id:
+        conversation = store.get("conversations", body.conversation_id)
+        if not conversation:
+            raise HTTPException(404, "Conversa não encontrada")
+        store.save(
+            "conversations", {**conversation, "llm_choice": body.model}, body.conversation_id
+        )
+    else:
+        store.set_setting("llm_default", body.model)
+    return {"selected": body.model}
+
+
+@app.post("/api/local-models/probe")
+async def probe_local(body: ModelChoice, _=Depends(owner)):
+    throttle("local_probe", 6)
+    if body.model not in ollama.MODELS:
+        raise HTTPException(422, "Modelo local não permitido")
+    try:
+        return await ollama.probe(body.model)
+    except ProviderError as e:
+        raise HTTPException(e.status, e.detail) from e
+
+
+@app.get("/api/health")
+async def health(conversation_id: str | None = None, _=Depends(owner)):
+    conversation = store.get("conversations", conversation_id) if conversation_id else None
+    choice = ollama.selection(conversation)
+    active = provider if choice == "remote" else ollama.Ollama(choice)
+    return {
+        **await active.health(),
         "backend": "ready",
         "database": store.engine.dialect.name,
         "embeddings_configured": smolin.embedding_provider.configured,
@@ -337,8 +385,10 @@ async def health(_=Depends(owner)):
         "agent": {
             "name": "Agente Saly",
             "included": True,
-            "tools_available": sum(bool(availability(name)) for name in REGISTRY),
-            "last_verification": getattr(provider, "last_probe", None),
+            "tools_available": sum(bool(availability(name)) for name in REGISTRY)
+            if choice == "remote"
+            else 0,
+            "last_verification": getattr(active, "last_probe", None),
             "modules": [
                 "chat",
                 "memory",
@@ -561,6 +611,42 @@ def document_detail(key: str, _=Depends(owner)):
     return d
 
 
+@app.get("/api/knowledge/{key}/entries/{index}/original")
+def zip_original(key: str, index: int, download: bool = False, _=Depends(owner)):
+    from urllib.parse import quote
+    from zipfile import BadZipFile
+
+    from .smolin.archives import original_entry
+
+    doc = store.get("documents", key)
+    if not doc or doc.get("kind") != "archive":
+        raise HTTPException(404, "ZIP não encontrado")
+    try:
+        raw, name, mime = original_entry(smolin.original(key), index)
+    except (ValueError, OSError, BadZipFile) as e:
+        raise HTTPException(422, "Arquivo interno indisponível ou ZIP inseguro") from e
+    inline = mime in {
+        "application/pdf",
+        "image/png",
+        "image/jpeg",
+        "image/webp",
+        "text/plain",
+        "text/markdown",
+    }
+    return Response(
+        raw,
+        media_type=mime,
+        headers={
+            "Content-Disposition": ("inline" if inline and not download else "attachment")
+            + "; filename*=UTF-8''"
+            + quote(name, safe=""),
+            "Content-Security-Policy": "sandbox",
+            "X-Content-Type-Options": "nosniff",
+            "Cache-Control": "no-store",
+        },
+    )
+
+
 @app.get("/api/knowledge/{key}/original")
 def document_original(key: str, request: Request, download: bool = False, _=Depends(owner)):
     d = store.get("documents", key)
@@ -779,19 +865,25 @@ def verify_response(value, sources, core_ids=()):
 async def chat(body: Chat, request: Request, _=Depends(owner)):
     throttle("chat", 20)
     prefs = settings(True)
-    if not prefs["privacy"].get("remoteConsent"):
-        raise HTTPException(
-            412, "Autorize o envio ao provedor remoto em Privacidade antes de conversar"
-        )
-    if not provider.configured:
-        raise HTTPException(503, "Configure SALY_LLM_API_KEY e um modelo remoto disponível")
     conversation = (
         store.get("conversations", body.conversation_id) if body.conversation_id else None
     )
+    choice = ollama.selection(conversation)
+    active_provider = provider if choice == "remote" else ollama.Ollama(choice)
+    if choice == "remote" and not prefs["privacy"].get("remoteConsent"):
+        raise HTTPException(
+            412, "Autorize o envio ao provedor remoto em Privacidade antes de conversar"
+        )
+    if not active_provider.configured:
+        raise HTTPException(503, "Configure SALY_LLM_API_KEY e um modelo remoto disponível")
+    if choice != "remote":
+        await active_provider.capabilities()
     if body.conversation_id and not conversation:
         raise HTTPException(404, "Conversa não encontrada")
     if not conversation:
-        conversation = store.save("conversations", {"title": body.message[:80]})
+        conversation = store.save(
+            "conversations", {"title": body.message[:80], "llm_choice": choice}
+        )
     epoch = store.setting("context_epoch", 0)
     previous = [
         {"role": m["role"], "content": m["content"]}
@@ -836,12 +928,20 @@ async def chat(body: Chat, request: Request, _=Depends(owner)):
             + "\n"
         )
         try:
-            async with asyncio.timeout(90):
+            async with asyncio.timeout(240 if choice != "remote" else 90):
                 if prefs["privacy"].get("useMemory", True):
-                    memories = (await search_memories(body.message, usable=True))[:6]
+                    memories = (
+                        await search_memories(body.message, usable=True)
+                        if choice == "remote"
+                        else await search_memories(body.message, usable=True, remote_allowed=False)
+                    )[:6]
                 if prefs["privacy"].get("useKnowledge", True):
                     yield json.dumps({"type": "state", "state": "searching"}) + "\n"
-                    sources = await smolin.search(body.message)
+                    sources = (
+                        await smolin.search(body.message)
+                        if choice == "remote"
+                        else await smolin.search(body.message, remote_allowed=False)
+                    )
                 context = {
                     "core_principles": principles,
                     "memories": [
@@ -892,7 +992,9 @@ async def chat(body: Chat, request: Request, _=Depends(owner)):
                     turn_text = ""
                     done = False
                     yield json.dumps({"type": "state", "state": "thinking"}) + "\n"
-                    async for event in provider.stream(turns, tool_schemas):
+                    async for event in active_provider.stream(
+                        turns, tool_schemas if choice == "remote" else None
+                    ):
                         if await request.is_disconnected():
                             return
                         if event.get("text"):
@@ -1051,15 +1153,19 @@ async def chat(body: Chat, request: Request, _=Depends(owner)):
                         "memory_ids": [m["id"] for m in memories],
                         "approvals": pending,
                         "verification": verification,
+                        "model": active_provider.model,
+                        "provider": "remote" if choice == "remote" else "ollama",
                     },
                 )
-                store.audit("inference", "Resposta remota concluída: " + conversation["id"])
+                store.audit("inference", "Resposta concluída: " + conversation["id"])
                 yield (
                     json.dumps(
                         {
                             "type": "done",
                             "content": answer,
                             "verification": verification,
+                            "model": active_provider.model,
+                            "provider": "remote" if choice == "remote" else "ollama",
                             "approvals": pending,
                         }
                     )

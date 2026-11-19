@@ -18,10 +18,19 @@ from .. import storage as store
 from .catalog import documents as catalog
 from .formats import classify, safe_name
 
-PIPELINE = "smolin-library-v4"
+PIPELINE = "smolin-library-v5"
 SEM = asyncio.Semaphore(max(1, min(2, int(os.environ.get("SALY_DOC_WORKERS", "1")))))
 TASKS = set()
 JOB_TASKS = {}
+
+
+def storage_cost(doc):
+    return max(
+        doc.get("reserved_bytes") or 0,
+        (doc.get("file_size") or 0)
+        + (doc.get("text_size") or 0) * 3
+        + (doc.get("chunks") or 0) * 8000,
+    )
 
 
 def upload_limit():
@@ -146,6 +155,14 @@ async def process(key, job_id):
                         "OMP_NUM_THREADS": "2",
                         "OPENBLAS_NUM_THREADS": "1",
                     }
+                    for name in (
+                        "SALY_ZIP_MAX_ENTRIES",
+                        "SALY_ZIP_MAX_EXPANDED_MB",
+                        "SALY_ZIP_MAX_FILE_MB",
+                        "SALY_ZIP_MAX_DEPTH",
+                    ):
+                        if name in os.environ:
+                            environment[name] = os.environ[name]
                     if transcription and os.environ.get("SALY_SMOLIN_WHISPER_MODEL_PATH"):
                         environment["SALY_SMOLIN_WHISPER_MODEL_PATH"] = os.environ[
                             "SALY_SMOLIN_WHISPER_MODEL_PATH"
@@ -191,6 +208,29 @@ async def process(key, job_id):
                     parsed["notice"] = (
                         doc.get("interpretation_notice", "") + " " + parsed.get("notice", "")
                     )
+            if kind == "archive":
+                # Reserve derived storage before incremental writes; concurrent ZIP jobs
+                # see this reservation through the existing transaction boundary.
+                estimate = (doc.get("file_size") or 0) + sum(
+                    len(p["content"].encode()) * 3 + len(list(chunk_page(p["content"]))) * 8000
+                    for p in parsed["pages"]
+                )
+                with store.transaction():
+                    used = sum(storage_cost(d) for d in catalog() if d["id"] != key)
+                    if used + estimate > int(os.environ.get("SALY_MAX_TOTAL_MB", "200")) * 1024**2:
+                        raise ValueError(
+                            "Expansão indexada do ZIP excede a capacidade configurada do acervo"
+                        )
+                    doc = store.save(
+                        "documents",
+                        {
+                            **doc,
+                            "reserved_bytes": estimate,
+                            "pages": parsed["pages"],
+                            "archive_entries": parsed.get("archive_entries", []),
+                        },
+                        key,
+                    )
             current = store.get("document_jobs", job_id)
             if not current.get("indexing_started"):
                 with store.transaction():
@@ -207,8 +247,10 @@ async def process(key, job_id):
             count = current.get("chunk_count", 0)
             embedding_error = current.get("embedding_error", False)
             prefs = store.setting("preferences", {})
-            use_vectors = embedding_provider.configured and prefs.get("privacy", {}).get(
-                "remoteConsent", False
+            use_vectors = (
+                kind != "archive"
+                and embedding_provider.configured
+                and prefs.get("privacy", {}).get("remoteConsent", False)
             )
             for page in parsed["pages"]:
                 current = store.get("document_jobs", job_id)
@@ -289,6 +331,8 @@ async def process(key, job_id):
                     ),
                     "transcribed": parsed.get("transcribed", False),
                     "pages": parsed["pages"],
+                    "archive_entries": parsed.get("archive_entries", []),
+                    "reserved_bytes": 0,
                     "title": parsed["title"],
                     "author": parsed["author"],
                     "empty_pages": empty,
@@ -387,10 +431,7 @@ def _upload(raw, name):
             422,
             "Conteúdo inválido para o formato; texto precisa ser UTF-8/UTF-16 válido e PDF precisa ter assinatura PDF",
         ) from None
-    used = sum(
-        (d.get("file_size") or 0) + (d.get("text_size") or 0) * 3 + (d.get("chunks") or 0) * 8000
-        for d in catalog()
-    )
+    used = sum(storage_cost(d) for d in catalog())
     if used + len(raw) > int(os.environ.get("SALY_MAX_TOTAL_MB", "200")) * 1024 * 1024:
         raise HTTPException(413, "Capacidade configurada do acervo atingida")
     doc = store.save(
@@ -430,6 +471,8 @@ def _upload(raw, name):
 def source_url(doc, page):
     original = f"/api/knowledge/{doc['id']}/original"
     item = next((p for p in doc.get("pages", []) if p["page"] == page), {})
+    if "entry_index" in item:
+        return f"/api/knowledge/{doc['id']}/entries/{item['entry_index']}/original#page={item['source_page']}"
     return (
         original + f"#t={item['start_seconds']}"
         if "start_seconds" in item
@@ -440,11 +483,20 @@ def source_url(doc, page):
 def source_metadata(doc, page):
     item = next((p for p in doc.get("pages", []) if p["page"] == page), {})
     return {
-        "title": doc.get("title") or doc.get("name"),
-        "author": doc.get("author") or None,
+        "title": item.get("source_title") or doc.get("title") or doc.get("name"),
+        "author": item.get("source_author") or doc.get("author") or None,
         **{
             key: item[key]
-            for key in ("start_seconds", "end_seconds", "label", "chapter", "method")
+            for key in (
+                "start_seconds",
+                "end_seconds",
+                "label",
+                "chapter",
+                "method",
+                "archive_path",
+                "source_page",
+                "entry_index",
+            )
             if key in item
         },
     }
@@ -498,7 +550,7 @@ def lexical(query, limit=8, document_id=None):
     return results
 
 
-async def search(query, document_id=None):
+async def search(query, document_id=None, remote_allowed=True):
     results = lexical(query, document_id=document_id)
     if os.environ.get("SALY_LOCAL_LSA", "1") == "1":
         from .intelligence import semantic
@@ -528,8 +580,10 @@ async def search(query, document_id=None):
                     )
         except (OSError, ValueError, np.linalg.LinAlgError):
             store.audit("lsa_error", "Índice LSA indisponível; busca textual preservada")
-    if embedding_provider.configured and store.setting("preferences", {}).get("privacy", {}).get(
-        "remoteConsent", False
+    if (
+        remote_allowed
+        and embedding_provider.configured
+        and store.setting("preferences", {}).get("privacy", {}).get("remoteConsent", False)
     ):
         try:
             vector = (await embedding_provider.encode([query]))[0]

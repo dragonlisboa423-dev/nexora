@@ -54,7 +54,7 @@ def start(body: Start, _=Depends(owner)):
     with store.transaction():
         cleanup()
         active = store.all_records("smolin_uploads")
-        used = sum((d.get("file_size") or 0) for d in service.catalog()) + sum(
+        used = sum(service.storage_cost(d) for d in service.catalog()) + sum(
             d["size"] for d in active
         )
         import os

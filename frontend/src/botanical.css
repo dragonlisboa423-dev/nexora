@@ -2526,3 +2526,23 @@ meter {
     transform: rotate(-3deg);
   }
 }
+
+.local-models {
+  margin: 0.75rem 0;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--border, #254943);
+  border-radius: 8px;
+}
+.local-models select {
+  max-width: 100%;
+}
+.archive-tree {
+  overflow-wrap: anywhere;
+  margin: 1rem 0;
+}
+.archive-tree ul {
+  padding-left: 1.2rem;
+}
+.archive-tree li {
+  margin: 0.5rem 0;
+}

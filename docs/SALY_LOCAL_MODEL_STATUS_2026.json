@@ -1,0 +1,42 @@
+{
+  "recorded_at": "2026-11-19T23:32:41.880563+00:00",
+  "environment": "Codex workspace; not the owner Codespace",
+  "runtime": {
+    "version": "0.40.16"
+  },
+  "installed_models": [],
+  "probe": {
+    "models": [
+      {
+        "model": "granite4:3b",
+        "status": "unavailable",
+        "error": "HTTPError",
+        "http_status": 404,
+        "seconds": 0.01
+      },
+      {
+        "model": "ministral-3:3b",
+        "status": "unavailable",
+        "error": "HTTPError",
+        "http_status": 404,
+        "seconds": 0.007
+      },
+      {
+        "model": "phi4-mini",
+        "status": "unavailable",
+        "error": "HTTPError",
+        "http_status": 404,
+        "seconds": 0.007
+      },
+      {
+        "model": "gemma3:4b",
+        "status": "unavailable",
+        "error": "HTTPError",
+        "http_status": 404,
+        "seconds": 0.006
+      }
+    ],
+    "scope": "Geração textual em português; ferramentas/visão não verificadas"
+  },
+  "limitation": "No model weights installed; error response times are not inference benchmarks. Registry download blocked by environment network."
+}

@@ -1,3 +1,4 @@
+import { readCoreMotion } from "./CoreMotion";
 import {
   Component,
   Suspense,
@@ -16,6 +17,7 @@ export type CoreProps = {
   quality: string;
   pulse: number;
   speechSignal?: React.MutableRefObject<boolean>;
+  motion?: { intensity: number; speed: number };
 };
 const BotanicalCanvas = lazy(() => import("./BotanicalCanvas"));
 function BotanicalFlat({ state }: { state: SalyState }) {
@@ -48,6 +50,16 @@ class Boundary extends Component<
 }
 export function Core(props: CoreProps) {
   const [failed, setFailed] = useState(false);
+  const [motion, setMotion] = useState(readCoreMotion);
+  useEffect(() => {
+    const update = () => setMotion(readCoreMotion());
+    window.addEventListener("saly-core-motion", update);
+    window.addEventListener("storage", update);
+    return () => {
+      window.removeEventListener("saly-core-motion", update);
+      window.removeEventListener("storage", update);
+    };
+  }, []);
   const container = useRef<HTMLDivElement>(null),
     [visible, setVisible] = useState(true),
     [reduced, setReduced] = useState(
@@ -139,6 +151,7 @@ export function Core(props: CoreProps) {
           <Suspense fallback={fallback}>
             <BotanicalCanvas
               {...props}
+              motion={motion}
               quality={quality}
               reduced={reduced}
               visible={visible}
