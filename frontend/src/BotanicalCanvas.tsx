@@ -1,26 +1,15 @@
 import { useEffect, useMemo, useRef } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
+import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import type { SalyState } from "./api";
 import type { CoreProps as Props } from "./Core";
-import { botanicalGeometry } from "./botanical_geometry";
-// The original liquid deformation/clock/RMS engine evolves into anatomical surfaces.
-const vertex = `varying vec3 p;varying vec3 n;varying vec3 view;varying vec2 tex;uniform float t;uniform float energy;
+// Restored selectively from f03426b:frontend/src/Core.tsx.
+const vertex = `varying vec3 p; varying vec3 vNormal; varying vec3 vView; uniform float t; uniform float energy;
 float fluid(vec3 q){return sin(q.x*2.8+t*.38)*cos(q.y*3.4-t*.29)*sin(q.z*2.6+t*.23)+.45*sin(q.y*5.+q.x*3.-t*.42);}
-void main(){float f=fluid(position);vec3 v=position+normal*f*(.018+energy*.028);v.x+=sin(position.y*2.+t*.7)*.014;p=v;tex=uv;n=normalize(normalMatrix*normal);vec4 mv=modelViewMatrix*vec4(v,1.);view=normalize(-mv.xyz);gl_Position=projectionMatrix*mv;}`;
-const fragment = `varying vec3 p;varying vec3 n;varying vec3 view;varying vec2 tex;uniform float t;uniform float energy;uniform float activity;uniform float stress;uniform float vascular;uniform float inner;
-void main(){float rim=pow(1.-abs(dot(normalize(n),view)),2.);vec3 N=normalize(n)*(gl_FrontFacing?1.:-1.);vec3 L=normalize(vec3(-.5,.8,1.));float light=.28+.72*max(0.,dot(N,L));float sheen=pow(max(0.,dot(reflect(-L,N),view)),18.);float cells=.5+.5*sin(p.y*21.+sin(p.x*19.)+sin(p.z*16.));float flow=pow(.5+.5*sin(tex.x*9.-t*3.),7.)*activity;
-vec3 deep=vec3(.075,.19,.09);vec3 tissue=vec3(.37,.54,.21);vec3 glow=vec3(.70,.84,.38);vec3 col=mix(deep,tissue,light*.62+rim*.25);col+=vec3(.28,.42,.12)*cells*.06;col+=glow*(rim*.19+energy*.13+inner*.20+sheen*.22);col=mix(col,vec3(.39,.55,.19)+glow*(flow*.75+energy*.3),vascular);col=mix(col,vec3(.48,.36,.17),stress*.25);gl_FragColor=vec4(col,vascular>.5?.80:.91);}`;
-const working = new Set<SalyState>([
-  "thinking",
-  "searching",
-  "executing",
-  "executing_tool",
-  "reading_document",
-  "transcribing",
-  "synthesizing",
-]);
-
+void main(){float displacement=fluid(position)*(.12+energy*.09);vec3 v=position*(1.+displacement);p=v;vNormal=normalize(normalMatrix*normal);vec4 mv=modelViewMatrix*vec4(v,1.);vView=normalize(-mv.xyz);gl_Position=projectionMatrix*mv;}`;
+const fragment = `varying vec3 p;varying vec3 vNormal;varying vec3 vView;uniform float t;uniform float energy;uniform float stress;
+void main(){float fresnel=pow(1.-abs(dot(normalize(vNormal),vView)),2.2);float folds=sin(p.y*5.+sin(p.x*4.+t*.3)*1.3+sin(p.z*5.-t*.28));float vein=pow(.5+.5*sin(folds*3.+p.z*2.),5.);float caustic=pow(.5+.5*sin(p.x*5.+p.y*3.+sin(p.z*4.+t*.2)),12.);vec3 deep=vec3(.015,.12,.09);vec3 cyan=vec3(.12,.68,.43);vec3 light=vec3(.64,1.,.72);vec3 color=mix(deep,cyan,.2+vein*.48);color+=light*(fresnel*.75+caustic*.32)*(1.+energy*.6);color=mix(color,vec3(.5,.39,.22),stress*.16);gl_FragColor=vec4(color,.65+fresnel*.3);}`;
 function Organic({
   state,
   level,
@@ -30,145 +19,245 @@ function Organic({
   speechSignal,
   element,
 }: {
-  reduced: boolean;
   element: React.RefObject<HTMLDivElement | null>;
-} & Props) {
-  const group = useRef<THREE.Group>(null!),
-    leaves = useRef<(THREE.Group | null)[]>([]),
-    metrics = useRef({ elapsed: 0, frames: 0, last: 0 });
-  const low = quality !== "high",
-    anatomy = useMemo(() => botanicalGeometry(low), [low]);
-  const materials = useMemo(
+  state: SalyState;
+  level: React.MutableRefObject<number>;
+  quality: string;
+  reduced: boolean;
+  pulse: number;
+  speechSignal?: React.MutableRefObject<boolean>;
+}) {
+  const group = useRef<THREE.Group>(null!);
+  const errorStart = useRef(0);
+  useEffect(() => {
+    if (state === "error") errorStart.current = performance.now();
+  }, [state]);
+  const material = useMemo(
     () =>
-      [0, 1, 2].map(
-        (i) =>
-          new THREE.ShaderMaterial({
-            vertexShader: vertex,
-            fragmentShader: fragment,
-            side: THREE.DoubleSide,
-            transparent: true,
-            forceSinglePass: true,
-            depthWrite: i !== 1,
-            uniforms: {
-              t: { value: 0 },
-              energy: { value: 0 },
-              activity: { value: 0 },
-              stress: { value: 0 },
-              vascular: { value: i === 1 ? 1 : 0 },
-              inner: { value: i === 2 ? 1 : 0 },
-            },
-          }),
-      ),
+      new THREE.ShaderMaterial({
+        uniforms: {
+          t: { value: 0 },
+          energy: { value: 0 },
+          stress: { value: 0 },
+        },
+        vertexShader: vertex,
+        fragmentShader: fragment,
+        transparent: true,
+        wireframe: false,
+      }),
     [],
   );
+  const points = useMemo(() => {
+    const count = quality === "low" ? 120 : 550;
+    const a = new Float32Array(count * 3);
+    for (let i = 0; i < count; i++) {
+      const y = 1 - (i / (count - 1)) * 2;
+      const r = Math.sqrt(1 - y * y);
+      const theta = Math.PI * (3 - Math.sqrt(5)) * i;
+      a.set(
+        [Math.cos(theta) * r * 1.35, y * 1.35, Math.sin(theta) * r * 1.35],
+        i * 3,
+      );
+    }
+    return a;
+  }, [quality]);
+  const stats = useRef({ frames: 0, last: 0, total: 0 });
   const invalidate = useThree((s) => s.invalidate);
   useEffect(() => {
     invalidate();
   }, [state, reduced, quality, invalidate]);
-  useEffect(
-    () => () => {
-      Object.values(anatomy).forEach((g) => g.dispose());
-    },
-    [anatomy],
-  );
-  useEffect(() => () => materials.forEach((m) => m.dispose()), [materials]);
+  useEffect(() => () => material.dispose(), [material]);
   useFrame(({ clock, gl }, delta) => {
-    const time = reduced
-      ? 0
-      : clock.getElapsedTime() * (state === "offline" ? 0.15 : 1);
-    const signal =
-      state === "listening" || (state === "speaking" && speechSignal?.current)
-        ? Math.max(0, Math.min(1, level.current))
-        : 0;
-    if (element.current)
-      element.current.style.setProperty("--audio-energy", String(signal));
-    const activity = working.has(state)
-      ? 0.65
-      : state === "responding"
-        ? 0.4
-        : 0;
-    const energy = signal || (state === "speaking" ? 0.07 : activity * 0.22);
-    const smoothing = 1 - Math.exp(-Math.min(delta, 0.1) * 6);
-    for (const m of materials) {
-      m.uniforms.t.value = time;
-      m.uniforms.energy.value = THREE.MathUtils.lerp(
-        m.uniforms.energy.value,
-        energy,
-        smoothing,
-      );
-      m.uniforms.activity.value = activity;
-      m.uniforms.stress.value = state === "error" ? 1 : 0;
-    }
-    if (group.current) {
-      group.current.rotation.y =
-        0.55 + (reduced ? 0 : Math.sin(time * 0.21) * 0.09);
-      group.current.rotation.z = reduced
-        ? -0.04
-        : -0.04 + Math.sin(time * 0.28) * 0.018;
-      const beat = reduced
-        ? 0
-        : Math.exp(-Math.pow((Math.sin(time * 1.6) - 0.87) * 9, 2)) * 0.014 +
-          Math.sin(time * 0.8) * 0.007;
-      const confirmed =
-        pulse && !reduced
-          ? Math.max(0, 1 - (performance.now() - pulse) / 1000) * 0.018
+    stats.current.frames++;
+    stats.current.total += delta;
+    if (element.current) {
+      const signal =
+        state === "listening" || (state === "speaking" && speechSignal?.current)
+          ? level.current
           : 0;
-      group.current.scale.setScalar(1 + beat + energy * 0.035 + confirmed);
+      element.current.style.setProperty("--audio-energy", String(signal));
+      if (clock.elapsedTime - stats.current.last > 1) {
+        Object.assign(element.current.dataset, {
+          frames: String(stats.current.frames),
+          drawCalls: String(gl.info.render.calls),
+          triangles: String(gl.info.render.triangles),
+          frameMs: (
+            (1000 * stats.current.total) /
+            stats.current.frames
+          ).toFixed(2),
+        });
+        stats.current.last = clock.elapsedTime;
+      }
     }
-    leaves.current.forEach((leaf, i) => {
-      if (leaf)
-        leaf.rotation.x = reduced
-          ? 0
-          : Math.sin(time * 0.6 + i) * 0.015 + signal * 0.025;
-    });
-    metrics.current.elapsed += delta;
-    metrics.current.frames++;
-    if (clock.elapsedTime - metrics.current.last > 1 && element.current) {
-      element.current.dataset.drawCalls = String(gl.info.render.calls);
-      element.current.dataset.triangles = String(gl.info.render.triangles);
-      element.current.dataset.frames = String(metrics.current.frames);
-      element.current.dataset.frameMs = (
-        (1000 * metrics.current.elapsed) /
-        metrics.current.frames
-      ).toFixed(2);
-      metrics.current.last = clock.elapsedTime;
+    const t = clock.getElapsedTime();
+    const energy =
+      state === "listening"
+        ? level.current
+        : state === "speaking"
+          ? speechSignal?.current
+            ? level.current
+            : 0.12
+          : [
+                "thinking",
+                "executing",
+                "synthesizing",
+                "searching",
+                "executing_tool",
+                "reading_document",
+                "transcribing",
+              ].includes(state)
+            ? 0.25
+            : state === "responding"
+              ? 0.2
+              : 0.02;
+    material.uniforms.stress.value =
+      state === "error"
+        ? reduced
+          ? 1
+          : Math.max(0, 1 - (performance.now() - errorStart.current) / 3500)
+        : 0;
+    material.uniforms.energy.value = THREE.MathUtils.lerp(
+      material.uniforms.energy.value,
+      energy,
+      0.13,
+    );
+    material.uniforms.t.value = reduced
+      ? 0
+      : state === "offline"
+        ? t * 0.08
+        : t;
+    if (group.current) {
+      group.current.rotation.y = reduced ? 0 : t * 0.08;
+      const boost =
+        pulse && !reduced
+          ? Math.max(0, 1 - (performance.now() - pulse) / 1100) * 0.1
+          : 0;
+      group.current.scale.setScalar(1 + energy * 0.06 + boost);
     }
   });
-  const count = quality === "high" ? 5 : 3;
   return (
-    <group ref={group} rotation={[0, 0.55, -0.04]}>
+    <group ref={group}>
       <mesh
-        geometry={anatomy.pod}
-        material={materials[2]}
+        material={material}
         onAfterRender={(renderer) => {
           renderer.domElement.dataset.salyRendered = "true";
         }}
-      />
-      {Array.from({ length: count }, (_, i) => (
-        <group
+      >
+        <sphereGeometry
+          args={[1, quality === "low" ? 32 : 72, quality === "low" ? 24 : 64]}
+        />
+      </mesh>
+      <Fibres materialTime={material} quality={quality} />
+      <mesh rotation={[0.4, 0, 0.5]}>
+        <icosahedronGeometry args={[0.81, 2]} />
+        <meshBasicMaterial
+          color="#58cfce"
+          wireframe
+          transparent
+          opacity={0.035}
+        />
+      </mesh>
+      <mesh>
+        <sphereGeometry args={[0.44, 24, 24]} />
+        <meshBasicMaterial color="#87fff0" transparent opacity={0.14} />
+      </mesh>
+      {[0, 1, 2].map((i) => (
+        <mesh
           key={i}
-          rotation={[
-            0,
-            (i * Math.PI * 2) / count + 0.35,
-            Math.sin(i * 2.3) * 0.13,
-          ]}
-          scale={[0.82 + (i % 2) * 0.12, 0.85 + (i % 3) * 0.13, 1]}
+          rotation={[Math.PI / 2 + i * 0.3, 0.15 + i * 0.4, i * 0.5]}
         >
-          <group
-            ref={(node) => {
-              leaves.current[i] = node;
-            }}
-          >
-            <mesh geometry={anatomy.leaf} material={materials[0]} />
-            <mesh geometry={anatomy.vessels} material={materials[1]} />
-          </group>
-        </group>
+          <torusGeometry args={[1.12 + i * 0.09, 0.004, 6, 128]} />
+          <meshBasicMaterial color="#67dacc" transparent opacity={0.07} />
+        </mesh>
       ))}
-      <mesh geometry={anatomy.roots} material={materials[1]} />
+      <points>
+        <bufferGeometry>
+          <bufferAttribute attach="attributes-position" args={[points, 3]} />
+        </bufferGeometry>
+        <pointsMaterial
+          color="#8bffea"
+          size={0.012}
+          transparent
+          opacity={0.5}
+        />
+      </points>
     </group>
   );
 }
 
+// Delicate branching fibres remain INSIDE the recovered fluid surface (radius < .9).
+function Fibres({
+  materialTime,
+  quality,
+}: {
+  materialTime: THREE.ShaderMaterial;
+  quality: string;
+}) {
+  const geometry = useMemo(() => {
+    const pieces: THREE.BufferGeometry[] = [];
+    const count = quality === "low" ? 4 : 7;
+    for (let i = 0; i < count; i++) {
+      const phase = i * 2.399;
+      const point = (t: number, offset = 0) => {
+        const y = -0.72 + 1.44 * t;
+        const radius = Math.sqrt(1 - y * y) * (0.74 + offset);
+        const angle = phase + t * 1.5;
+        return new THREE.Vector3(
+          Math.cos(angle) * radius,
+          y,
+          Math.sin(angle) * radius,
+        );
+      };
+      pieces.push(
+        new THREE.TubeGeometry(
+          new THREE.CatmullRomCurve3(
+            Array.from({ length: 16 }, (_, j) => point(j / 15)),
+          ),
+          24,
+          0.004,
+          4,
+          false,
+        ),
+      );
+      for (const t of [0.3, 0.57])
+        pieces.push(
+          new THREE.TubeGeometry(
+            new THREE.CatmullRomCurve3([
+              point(t),
+              point(t + 0.08, -0.09),
+              point(t + 0.19, -0.2),
+            ]),
+            9,
+            0.0025,
+            3,
+            false,
+          ),
+        );
+    }
+    const merged = mergeGeometries(pieces)!;
+    pieces.forEach((g) => g.dispose());
+    return merged;
+  }, [quality]);
+  const material = useMemo(
+    () =>
+      new THREE.ShaderMaterial({
+        vertexShader: vertex,
+        fragmentShader: `varying vec3 p;uniform float t;uniform float energy;void main(){float flow=pow(.5+.5*sin(p.y*7.-t*1.2),5.);gl_FragColor=vec4(.44,.88,.54,.12+flow*(.08+energy*.25));}`,
+        uniforms: materialTime.uniforms,
+        transparent: true,
+        depthWrite: false,
+      }),
+    [materialTime],
+  );
+  useEffect(
+    () => () => {
+      geometry.dispose();
+      material.dispose();
+    },
+    [geometry, material],
+  );
+  return <mesh geometry={geometry} material={material} renderOrder={-1} />;
+}
 export default function BotanicalCanvas(
   props: Props & {
     reduced: boolean;
@@ -181,7 +270,7 @@ export default function BotanicalCanvas(
   return (
     <Canvas
       frameloop={!visible ? "never" : reduced ? "demand" : "always"}
-      camera={{ position: [0, -0.05, 4.6], fov: 40 }}
+      camera={{ position: [0, 0, 3.8], fov: 42 }}
       dpr={quality === "high" ? [1, 1.7] : quality === "low" ? 1 : [1, 1.25]}
       gl={{
         alpha: true,

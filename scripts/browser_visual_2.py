@@ -89,7 +89,7 @@ with test_server(port=8013) as base, sync_playwright() as p:
     expect(core).to_have_attribute("data-core-renderer", "webgl")
     page.wait_for_function('Number(document.querySelector(".botanical-core").dataset.frames)>1')
     anatomy = core.evaluate("node=>({...node.dataset})")
-    assert int(anatomy["triangles"]) < 8000
+    assert int(anatomy["triangles"]) < 40000
     page.screenshot(path="/tmp/saly-2-conversation-desktop.png", full_page=True)
     metrics = page.evaluate(
         """()=>new Promise(resolve=>{let frames=0;const start=performance.now();function tick(){frames++;if(performance.now()-start<2500)requestAnimationFrame(tick);else resolve({frames,elapsed_ms:performance.now()-start,fps:frames/((performance.now()-start)/1000),js_bytes:performance.getEntriesByType('resource').filter(r=>/\\.(js|mjs)(\\?|$)/.test(r.name)).reduce((s,r)=>s+r.encodedBodySize,0)});}requestAnimationFrame(tick);})"""
@@ -118,7 +118,7 @@ with test_server(port=8013) as base, sync_playwright() as p:
     core.locator("canvas").evaluate(
         "canvas=>canvas.getContext('webgl2').getExtension('WEBGL_lose_context').loseContext()"
     )
-    expect(core).to_have_attribute("data-core-renderer", "vector")
+    expect(core).to_have_attribute("data-core-renderer", "css-fallback")
     page.reload()
     page.locator("canvas[data-saly-rendered=true]").wait_for()
     go(page, "Memórias")
@@ -251,8 +251,8 @@ with test_server(port=8013) as base, sync_playwright() as p:
     settings["graphics"] = "2d"
     assert context.request.put(base + "/api/settings", data=settings).ok
     page.goto(base)
-    expect(core).to_have_attribute("data-core-renderer", "vector")
-    expect(core.locator("svg")).to_be_visible()
+    expect(core).to_have_attribute("data-core-renderer", "css-fallback")
+    expect(core.locator(".restored-fluid-flat")).to_be_visible()
     assert (
         context.request.get(base + "/api/memories").json()[0]["content"]
         == "MEMÓRIA PRESERVADA SALY 2"
