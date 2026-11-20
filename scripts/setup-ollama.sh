@@ -9,7 +9,7 @@ done
 [[ "$(uname -s)" == Linux ]] || { echo 'Instalação automática disponível somente para Linux.'; exit 1; }
 case "$(uname -m)" in x86_64) saly_arch=amd64;; aarch64) saly_arch=arm64;; *) echo 'Arquitetura não suportada'; exit 1;; esac
 saly_free="$(df -Pk . | awk 'NR==2 {print $4}')"
-[[ "$saly_free" -gt 17825792 ]] || { echo 'Reserve pelo menos 17 GiB livres para runtime, quatro modelos (~11 GiB estimados) e margem. Nenhum arquivo foi apagado.'; exit 1; }
+[[ "$saly_free" -gt 10485760 ]] || { echo 'Reserve pelo menos 10 GiB livres para runtime, dois modelos (~5 GiB estimados) e margem. Nenhum arquivo foi apagado.'; exit 1; }
 echo "Arquitetura: $saly_arch; espaço livre: $saly_free KiB; limite de memória cgroup: $(cat /sys/fs/cgroup/memory.max 2>/dev/null || echo desconhecido)."
 mkdir -p .tools/ollama/runtime
 if [[ ! -x .tools/ollama/runtime/bin/ollama ]] && ! command -v ollama >/dev/null; then
@@ -41,7 +41,7 @@ CHECK
 )"
 [[ "$saly_available" -ge 6442450944 ]] || { echo 'Menos de 6 GiB de RAM efetivamente livres: runtime instalado, modelos pendentes por recursos. Não alterei seu plano.'; exit 1; }
 # Explicit sequential pulls, never parallel and never automatic paid fallback.
-for saly_model in granite4:3b ministral-3:3b phi4-mini gemma3:4b; do
+for saly_model in granite4:3b phi4-mini; do
   saly_free="$(df -Pk . | awk 'NR==2 {print $4}')"
   [[ "$saly_free" -gt 7340032 ]] || { echo "Pendente $saly_model: menos de 7 GiB livres (peso + reserva)."; exit 1; }
   echo "Baixando/verificando $saly_model (gratuito local; sujeito à cota de computação do seu Codespaces)."

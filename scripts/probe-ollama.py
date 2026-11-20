@@ -1,13 +1,23 @@
 """Native text generation only; no cloud, no fake responses, no owner DB modification."""
 
+import argparse
 import json
 import time
 import urllib.error
 import urllib.request
 from pathlib import Path
 
+parser = argparse.ArgumentParser(
+    description="Testar somente os modelos locais selecionados, sem baixar pesos."
+)
+parser.add_argument("models", nargs="*", help="IDs dos modelos; padrão: granite4:3b e phi4-mini")
+args = parser.parse_args()
+selected = args.models or ["granite4:3b", "phi4-mini"]
+allowed = {"granite4:3b", "ministral-3:3b", "phi4-mini", "gemma3:4b"}
+if any(name not in allowed for name in selected):
+    parser.error("Modelo não permitido")
 report = {"models": [], "scope": "Geração textual em português; ferramentas/visão não verificadas"}
-for name in ("granite4:3b", "ministral-3:3b", "phi4-mini", "gemma3:4b"):
+for name in dict.fromkeys(selected):
     started = time.monotonic()
     item = {"model": name, "status": "unavailable"}
     try:

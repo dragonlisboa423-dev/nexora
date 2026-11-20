@@ -1,5 +1,11 @@
 # SALY — atualização integrada (19/11/2026)
 
+## Ajuste posterior: baixar apenas dois modelos
+
+Por solicitação do proprietário, `scripts/setup-ollama.sh` agora baixa somente **granite4:3b** e **phi4-mini**, sequencialmente. São dois modelos de texto compactos, escolhidos para reduzir armazenamento; não se afirma desempenho comparado sem teste. O mínimo inicial de disco passou de 17 para **10 GiB livres** (pesos estimados em aproximadamente 5 GiB, runtime temporário e reserva); permanece a verificação de 7 GiB antes de cada download e de 6 GiB de RAM efetivamente livres. Não são apagados modelos ou arquivos existentes. O diagnóstico nativo também testa somente esses dois por padrão. A compatibilidade do seletor com os demais IDs foi preservada, sem baixá-los automaticamente.
+
+No Codespace: `git pull --ff-only` e `bash scripts/setup-ollama.sh`. Se ainda faltar disco/RAM, o script interrompe e informa; não remova a verificação nem aumente o plano automaticamente. A auditoria abaixo registra o pedido original de quatro e seus bloqueios na ocasião; não significa que eles tenham sido instalados depois.
+
 ## Escopo e estado real
 
 Base auditada: `0dff8a9`, branch `feat/saly-smolin`; ponto de recuperação local `recovery/pre-integrated-0dff8a9`. Não houve reset, reconstrução da interface, troca do núcleo por folha, alteração de credenciais ou de dados pessoais. Este ambiente do Codex **não é o Codespace do proprietário**. Um push não instala modelos nem reinicia o site do Codespace.
