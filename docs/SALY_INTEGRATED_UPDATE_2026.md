@@ -116,3 +116,9 @@ npm --prefix frontend run build
 Arquivos principais: `backend/llm/ollama.py`, `backend/main.py`, `backend/memory.py`, `backend/smolin/{archives,extract,service,catalog,uploads}.py`; `frontend/src/{LocalModels,ArchiveTree,CoreMotion,CoreBloom,BotanicalCanvas,Core,Panels,Smolin,main}.tsx`, `frontend/src/botanical.css`; scripts `setup-ollama.sh`, `start-ollama.sh`, `probe-ollama.py`, `browser_integrated_update.py`; `.devcontainer/devcontainer.json`; testes `test_integrated_update.py` e atualização da expectativa antiga de ZIP em `test_smolin_files.py`. Nenhuma dependência frontend nova foi adicionada.
 
 A entrega completa de quatro modelos funcionais com ferramentas/visão **permanece bloqueada**. Resolver a rede e testar os pesos no Codespace real é necessário antes de afirmar disponibilidade de inferência, capacidades por modelo ou desempenho de geração.
+
+## Correção da inicialização do log
+
+Corrigida a falha `chmod: cannot access .../server.log` em `scripts/start-ollama.sh`: o log agora é criado e recebe permissão 600 **antes** do lançamento em segundo plano. `umask 077` protege novos arquivos desde a criação; reinícios acrescentam ao log sem truncar diagnósticos anteriores. O PID continua privado e um servidor que já responde não é iniciado novamente.
+
+Validação: dois testes de bootstrap com processo controlado (log novo/existente, permissões, preservação, ambiente sem credenciais e segunda execução sem novo processo), sintaxe Bash/Ruff e inicialização nativa local do Ollama 0.40.16, com `/api/version` respondendo e log/PID com modo 600. Isso não valida geração de modelos nem instala nada no Codespace do proprietário. Após `git pull --ff-only`, repetir `bash scripts/setup-ollama.sh` reutiliza o runtime já instalado e retoma a etapa dos dois modelos padrão; não é necessário baixar novamente o arquivo do Ollama.
