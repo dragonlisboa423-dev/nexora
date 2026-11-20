@@ -1,13 +1,18 @@
 """Actual UI/backend switching against a CONTROLLED Ollama protocol fixture, not model inference."""
 
 import json
+import os
+import subprocess
+import sys
+import tempfile
 import threading
 import time
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 
 from browser_navigation import go
-from browser_support import PASSWORD, test_server
+from browser_support import PASSWORD, ROOT, test_server
 from playwright.sync_api import expect, sync_playwright
 
 CALLS = []
@@ -70,7 +75,18 @@ def protocol_fixture():
         thread.join()
 
 
-with protocol_fixture(), test_server(port=8016) as base, sync_playwright() as p:
+with (
+    tempfile.TemporaryDirectory(prefix="saly-chat-ready-") as directory,
+    protocol_fixture(),
+    test_server(
+        port=8016,
+        extra_environment={
+            "SALY_DATA_DIR": directory,
+            "SALY_DATABASE_URL": "sqlite:///" + directory + "/db.sqlite3",
+        },
+    ) as base,
+    sync_playwright() as p,
+):
     browser = p.chromium.launch(
         executable_path="/usr/bin/chromium",
         headless=True,
@@ -86,13 +102,14 @@ with protocol_fixture(), test_server(port=8016) as base, sync_playwright() as p:
     selector = page.get_by_label("Modelo da conversa", exact=True)
     expect(selector).to_be_visible()  # No collapsed details, on desktop or phone.
     expect(selector).to_be_enabled()
+    expect(selector).to_have_value("granite4:3b")
+    health = page.request.get(base + "/api/health").json()
+    assert health["can_chat"] and not health["model_ready"]
     selector.select_option("phi4-mini")
     expect(selector).to_be_enabled()
     expect(selector).to_have_value("phi4-mini")
     expect(page.locator(".model-availability")).to_contain_text("Modelo instalado")
-    page.get_by_role("button", name="Testar modelo local", exact=True).click()
-    expect(selector).to_be_disabled()
-    expect(selector).to_be_enabled(timeout=15000)
+    # Installed-but-unverified must permit the first real chat request, without a probe.
     page.get_by_placeholder("Compartilhe uma ideia com Saly…").fill("Primeira pergunta de teste.")
     send = page.get_by_role("button", name="Enviar mensagem", exact=True)
     expect(send).to_be_enabled()
@@ -125,8 +142,33 @@ with protocol_fixture(), test_server(port=8016) as base, sync_playwright() as p:
     expect(selector).to_be_enabled()
     choice = page.request.get(base + "/api/local-models?conversation_id=" + cid).json()
     assert choice["selected"] == "granite4:3b" and choice["default"] == "phi4-mini", choice
-    page.get_by_role("button", name="Testar modelo local", exact=True).click()
-    expect(selector).to_be_disabled()
+    # The installer's CLI writes the same readiness consumed by the live application.
+    report = Path(directory) / "probe.json"
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts/probe-ollama.py"),
+            "granite4:3b",
+            "--report",
+            str(report),
+        ],
+        cwd=ROOT,
+        env={
+            **os.environ,
+            "SALY_DATA_DIR": directory,
+            "SALY_DATABASE_URL": "sqlite:///" + directory + "/db.sqlite3",
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=20,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "Testando geração local" in result.stdout
+    assert json.loads(report.read_text())["models"][0]["status"] == "functional"
+    assert page.request.get(base + "/api/health?conversation_id=" + cid).json()["model_ready"]
+    page.locator(".model-options summary").click()
+    page.get_by_role("button", name="Atualizar modelos", exact=True).click()
     expect(selector).to_be_enabled(timeout=15000)
     # Changing settings affects this same active conversation, not only a future one.
     page.get_by_role("navigation", name="Áreas principais", exact=True).get_by_role(
@@ -171,7 +213,8 @@ with protocol_fixture(), test_server(port=8016) as base, sync_playwright() as p:
                 "scope": "Controlled protocol, NOT real model inference",
                 "flows": [
                     "visible selector; subtitle removed",
-                    "verification enables sending",
+                    "first installed message works without a prior probe",
+                    "installer CLI persists readiness to live app database",
                     "switch in Settings affects open conversation",
                     "actual routed IDs and retained history",
                     "reload/history restores choice",

@@ -219,6 +219,7 @@ function App() {
     bottom = useRef<HTMLDivElement>(null),
     location = useLocation(),
     navigate = useNavigate();
+  const canSend = health?.can_chat ?? health?.model_ready ?? false;
   const [historyOpen, setHistoryOpen] = useState(false);
   const historyDialog = useRef<HTMLDialogElement>(null);
   const area = areaFor(location.pathname);
@@ -513,6 +514,8 @@ function App() {
       abort.current = null;
       setBusy(false);
       void refreshHistory();
+      void refreshHealth();
+      window.dispatchEvent(new Event("saly-model-status"));
     }
   }
   function stop() {
@@ -714,7 +717,11 @@ function App() {
               className={`connection-label ${health?.model_ready ? "online" : ""}`}
             >
               <i />
-              {health?.model_ready ? "Modelo conectado" : "Modelo indisponível"}
+              {health?.model_ready
+                ? "Modelo conectado"
+                : canSend
+                  ? "Modelo instalado · geração não verificada"
+                  : "Modelo indisponível"}
             </span>
             <button
               className="icon-button"
@@ -1139,10 +1146,7 @@ function App() {
                         <button
                           className="send"
                           disabled={
-                            busy ||
-                            modelPending ||
-                            !input.trim() ||
-                            !health?.model_ready
+                            busy || modelPending || !input.trim() || !canSend
                           }
                           aria-label="Enviar mensagem"
                         >
@@ -1164,7 +1168,8 @@ function App() {
                     )}
                     <div className="composer-note">
                       {!health?.model_ready
-                        ? "O modelo ainda não está disponível. Memórias e documentos continuam acessíveis."
+                        ? health?.detail ||
+                          "Consultando disponibilidade do modelo. Memórias e documentos continuam acessíveis."
                         : "Saly pode errar. Verifique informações importantes."}{" "}
                       · Voz do navegador pode usar serviços externos.{" "}
                       {voiceEnabled && (

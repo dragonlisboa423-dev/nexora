@@ -336,10 +336,16 @@ async def local_models(conversation_id: str | None = None, _=Depends(owner)):
     conversation = store.get("conversations", conversation_id) if conversation_id else None
     if conversation_id and not conversation:
         raise HTTPException(404, "Conversa não encontrada")
+    inventory = await ollama.catalog()
     return {
-        **await ollama.catalog(),
-        "selected": ollama.selection(conversation),
-        "default": ollama.selection(),
+        **inventory,
+        "selected": await ollama.resolve_selection(
+            conversation, remote_configured=provider.configured, inventory=inventory
+        ),
+        "default": await ollama.resolve_selection(
+            remote_configured=provider.configured, inventory=inventory
+        ),
+        "remote_configured": provider.configured,
     }
 
 
@@ -373,7 +379,7 @@ async def probe_local(body: ModelChoice, _=Depends(owner)):
 @app.get("/api/health")
 async def health(conversation_id: str | None = None, _=Depends(owner)):
     conversation = store.get("conversations", conversation_id) if conversation_id else None
-    choice = ollama.selection(conversation)
+    choice = await ollama.resolve_selection(conversation, remote_configured=provider.configured)
     active = provider if choice == "remote" else ollama.Ollama(choice)
     return {
         **await active.health(),
@@ -868,7 +874,7 @@ async def chat(body: Chat, request: Request, _=Depends(owner)):
     conversation = (
         store.get("conversations", body.conversation_id) if body.conversation_id else None
     )
-    choice = ollama.selection(conversation)
+    choice = await ollama.resolve_selection(conversation, remote_configured=provider.configured)
     active_provider = provider if choice == "remote" else ollama.Ollama(choice)
     if choice == "remote" and not prefs["privacy"].get("remoteConsent"):
         raise HTTPException(
@@ -877,7 +883,10 @@ async def chat(body: Chat, request: Request, _=Depends(owner)):
     if not active_provider.configured:
         raise HTTPException(503, "Configure SALY_LLM_API_KEY e um modelo remoto disponível")
     if choice != "remote":
-        await active_provider.capabilities()
+        try:
+            await active_provider.capabilities()
+        except ProviderError as error:
+            raise HTTPException(error.status, error.detail) from error
     if body.conversation_id and not conversation:
         raise HTTPException(404, "Conversa não encontrada")
     if not conversation:

@@ -9,7 +9,12 @@ const labels: Record<string, string> = {
   communication_error: "falha na geração/comunicação",
 };
 type Model = { id: string; status: string; digest?: string };
-type Catalog = { selected: string; default: string; models: Model[] };
+type Catalog = {
+  selected: string;
+  default: string;
+  models: Model[];
+  remote_configured?: boolean;
+};
 export function LocalModels({
   conversation,
   busy = false,
@@ -49,12 +54,17 @@ export function LocalModels({
     setData(null);
     setError("");
     setNotice("");
-    refresh(controller.signal).catch((e) => {
-      if (!controller.signal.aborted) setError(e.message);
-    });
+    const update = () => {
+      void refresh(controller.signal).catch((e) => {
+        if (!controller.signal.aborted) setError(e.message);
+      });
+    };
+    update();
+    window.addEventListener("saly-model-status", update);
     return () => {
       controller.abort();
       sequence.current++;
+      window.removeEventListener("saly-model-status", update);
     };
   }, [conversation]);
   async function action(run: () => Promise<string>) {
@@ -137,6 +147,12 @@ export function LocalModels({
       {busy && !pending && (
         <p>Aguarde a resposta terminar ou use Interromper antes de trocar.</p>
       )}
+      {data?.selected === "remote" && data.remote_configured === false && (
+        <p className="model-availability">
+          Provedor remoto sem configuração. Escolha um modelo local instalado
+          para conversar sem chave de API.
+        </p>
+      )}
       {local && selected?.status !== "ready" && (
         <p className="model-availability">
           {selected?.status === "not_installed"
@@ -144,7 +160,7 @@ export function LocalModels({
             : selected?.status === "server_offline"
               ? "Ollama está desligado. Execute bash scripts/start-ollama.sh no terminal e atualize a lista."
               : selected?.status === "installed_unverified"
-                ? "Modelo instalado. Clique em Testar modelo local para verificar a geração e liberar o envio."
+                ? "Modelo instalado. Você já pode enviar uma mensagem para testar a geração. O botão Testar modelo local é opcional."
                 : selected?.status === "resource_error"
                   ? "A geração falhou por falta de memória. Consulte os recursos do servidor antes de testar novamente."
                   : "Não foi possível confirmar a geração local. Atualize a lista e confira o servidor Ollama."}
