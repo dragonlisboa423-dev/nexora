@@ -32,6 +32,8 @@ def native(client, monkeypatch):
         if request.url.path == "/api/generate":
             return httpx.Response(200, json={"done": True})
         assert request.url.path == "/api/chat"
+        if state.get("timeout"):
+            raise httpx.ReadTimeout("controlled read timeout")
         return httpx.Response(state["status"], content=state["body"])
 
     monkeypatch.setattr(
@@ -122,3 +124,33 @@ def test_cancelled_stream_never_certifies(client, native):
     asyncio.run(cancel())
     assert not store.setting("ollama_probe:granite4:3b", {}).get("ok")
     assert native["calls"][-1] == "/api/generate"
+
+
+def test_local_timeout_delivers_error_inside_stream(client, native):
+    native["timeout"] = True
+    result = events(client.post("/api/chat", json={"message": "Teste de espera excedida."}))
+    assert result[-1]["type"] == "error"
+    assert "tempo de espera" in result[-1]["detail"]
+    assert not any(item["type"] == "done" for item in result)
+    assert all(item["role"] != "assistant" for item in store.all_records("messages"))
+    assert not store.setting("ollama_probe:granite4:3b")["ok"]
+    assert native["calls"].count("/api/chat") == 1
+
+
+def test_total_response_deadline_ends_with_error_not_broken_http(client, native, monkeypatch):
+    closed = []
+
+    async def slow(self, messages, tools=None):
+        try:
+            await asyncio.sleep(0.15)
+            yield {"text": "late"}
+        finally:
+            closed.append(True)
+
+    monkeypatch.setattr(ollama.Ollama, "stream", slow)
+    monkeypatch.setattr(main, "LOCAL_CHAT_TIMEOUT_SECONDS", 0.05)
+    result = events(client.post("/api/chat", json={"message": "Teste de prazo total."}))
+    assert result[-1]["type"] == "error"
+    assert "tempo máximo" in result[-1]["detail"]
+    assert closed == [True]
+    assert all(item["role"] != "assistant" for item in store.all_records("messages"))

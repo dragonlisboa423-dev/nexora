@@ -1,3 +1,4 @@
+import { chatFailure, chatHttpFailure } from "./chat_errors";
 import { LocalModels } from "./LocalModels";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
@@ -429,8 +430,7 @@ function App() {
         signal: controller.signal,
       });
       if (!response.ok) {
-        const d = await response.json();
-        throw Error(d.detail || "Falha no chat");
+        throw Error(await chatHttpFailure(response));
       }
       if (!response.body) throw Error("Streaming indisponível");
       const reader = response.body.getReader(),
@@ -507,7 +507,7 @@ function App() {
           "Geração interrompida. Trechos parciais não são salvos como resposta concluída.",
         );
       } else {
-        setError((e as Error).message);
+        setError(chatFailure(e));
         setState("error");
       }
     } finally {

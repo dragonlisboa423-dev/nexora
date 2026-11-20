@@ -241,3 +241,5 @@ Veja o [relatório verificável e instruções de execução](docs/SALY_INTEGRAT
 Correção posterior: [seletor visível, troca na conversa aberta e atualização da interface ao iniciar](docs/SALY_MODEL_SELECTOR_FIX.md).
 
 Correção do envio local: [primeira mensagem sem probe obrigatório e validação compartilhada com o instalador](docs/SALY_CHAT_UNBLOCK.md).
+
+Correção de transporte: [conexão ativa durante a espera do modelo e diagnóstico de Network Error](docs/SALY_CHAT_NETWORK.md).

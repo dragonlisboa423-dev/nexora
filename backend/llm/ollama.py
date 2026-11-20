@@ -238,6 +238,13 @@ class Ollama:
             except ProviderError as error:
                 record_failure(self.model, digest, error)
                 raise
+            except httpx.TimeoutException as cause:
+                error = ProviderError(
+                    504,
+                    "O modelo local excedeu o tempo de espera ao carregar ou gerar texto. Confira a RAM e os logs do Ollama; tente uma mensagem curta.",
+                )
+                record_failure(self.model, digest, error)
+                raise error from cause
             except (httpx.HTTPError, ValueError, TypeError) as e:
                 error = ProviderError(503, "Falha de comunicação com o Ollama local.")
                 record_failure(self.model, digest, error)

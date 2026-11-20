@@ -43,6 +43,7 @@ from .smolin import service as smolin
 from .smolin.library_api import router as smolin_library_router
 from .smolin.transcription import capability as transcription_capability
 from .smolin.uploads import router as smolin_upload_router
+from .streaming import chat_transport
 from .sync import router as sync_router
 from .tools import calculate
 from .voices import router as voices_router
@@ -139,6 +140,7 @@ class BodyLimitMiddleware:
 
 app.add_middleware(BodyLimitMiddleware)
 provider = Provider()
+LOCAL_CHAT_TIMEOUT_SECONDS = 240
 
 
 @app.exception_handler(ValueError)
@@ -937,7 +939,7 @@ async def chat(body: Chat, request: Request, _=Depends(owner)):
             + "\n"
         )
         try:
-            async with asyncio.timeout(240 if choice != "remote" else 90):
+            async with asyncio.timeout(LOCAL_CHAT_TIMEOUT_SECONDS if choice != "remote" else 90):
                 if prefs["privacy"].get("useMemory", True):
                     memories = (
                         await search_memories(body.message, usable=True)
@@ -1186,7 +1188,9 @@ async def chat(body: Chat, request: Request, _=Depends(owner)):
             detail = (
                 e.detail
                 if isinstance(e, ProviderError)
-                else "Tempo ou limite de operação excedido. Resposta parcial não salva."
+                else "O tempo máximo da resposta foi excedido. Confira os recursos do servidor e tente uma pergunta curta. Resposta parcial não salva."
+                if isinstance(e, TimeoutError)
+                else "A operação excedeu um limite permitido. Resposta parcial não salva."
             )
             store.audit("inference_error", "Falha de inferência sem resposta concluída")
             yield json.dumps({"type": "error", "detail": detail}) + "\n"
@@ -1203,7 +1207,9 @@ async def chat(body: Chat, request: Request, _=Depends(owner)):
             )
 
     return StreamingResponse(
-        stream(), media_type="application/x-ndjson", headers={"X-Accel-Buffering": "no"}
+        chat_transport(stream()),
+        media_type="application/x-ndjson",
+        headers={"X-Accel-Buffering": "no", "Cache-Control": "no-store, no-transform"},
     )
 
 
