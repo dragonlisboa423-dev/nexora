@@ -724,12 +724,20 @@ export function Voices({
 }
 export function SettingsPanel({
   section,
+  conversation,
+  modelBusy,
+  modelChanged,
+  modelPendingChanged,
   prefs,
   save,
   health,
   notify,
 }: {
   section: string;
+  conversation?: string | null;
+  modelBusy?: boolean;
+  modelChanged?: () => Promise<void>;
+  modelPendingChanged?: (pending: boolean) => void;
   prefs: Prefs;
   save: (p: Prefs) => Promise<void>;
   health: any;
@@ -836,8 +844,13 @@ export function SettingsPanel({
       )}
       {(!section || section === "system") && (
         <>
+          <LocalModels
+            conversation={conversation}
+            busy={modelBusy}
+            changed={modelChanged}
+            pendingChanged={modelPendingChanged}
+          />
           <ModelConnection health={health} />
-          <LocalModels notify={notify} />
           <CoreMotion />
           <CoreImport notify={notify} />
         </>

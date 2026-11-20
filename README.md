@@ -237,3 +237,5 @@ A [etapa visual SALY 2.0](docs/SALY_2_0_VISUAL.md) organiza Conversa, Conhecimen
 ### Atualização integrada: modelos locais, núcleo e ZIP
 
 Veja o [relatório verificável e instruções de execução](docs/SALY_INTEGRATED_UPDATE_2026.md). A ponte Ollama e o seletor foram implementados; os quatro pesos não puderam ser baixados nesta rede e não são apresentados como modelos funcionais.
+
+Correção posterior: [seletor visível, troca na conversa aberta e atualização da interface ao iniciar](docs/SALY_MODEL_SELECTOR_FIX.md).

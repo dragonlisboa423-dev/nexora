@@ -5,6 +5,30 @@ export function ModelConnection({ health }: { health: any }) {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState("");
+  if (!health)
+    return (
+      <section className="card">
+        <h2>Conexão do modelo</h2>
+        <p>
+          O estado da conexão ainda não foi confirmado. Use o seletor acima para
+          escolher e verificar o modelo.
+        </p>
+      </section>
+    );
+  if (health?.provider === "ollama")
+    return (
+      <section className="card">
+        <h2>Modelo local</h2>
+        <p>
+          {health.model} · {health.detail}
+        </p>
+        <p>
+          O chat usa o Core, as memórias autorizadas e os trechos do Centro
+          Smolin. Chamadas de ferramentas e visão locais ainda não foram
+          verificadas.
+        </p>
+      </section>
+    );
   return (
     <section className="card">
       <small>MODELO + AGENTE SALY</small>

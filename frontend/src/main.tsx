@@ -1,5 +1,5 @@
 import { LocalModels } from "./LocalModels";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   BrowserRouter,
@@ -202,6 +202,7 @@ function App() {
   const [auth, setAuth] = useState<boolean | null>(null),
     [prefs, setPrefs] = useState<Prefs | null>(null),
     [health, setHealth] = useState<any>(null),
+    [modelPending, setModelPending] = useState(false),
     [error, setError] = useState(""),
     [input, setInput] = useState(""),
     [messages, setMessages] = useState<Message[]>([]),
@@ -304,22 +305,41 @@ function App() {
     api("/conversations")
       .then(setHistory)
       .catch((e) => setError(e.message));
+  const activeConversation = useRef(conversation);
+  activeConversation.current = conversation;
+  const healthSequence = useRef(0);
+  const refreshHealth = useCallback(async () => {
+    const scope = activeConversation.current,
+      ticket = ++healthSequence.current;
+    try {
+      const result = await api(
+        "/health" +
+          (scope ? "?conversation_id=" + encodeURIComponent(scope) : ""),
+        { signal: AbortSignal.timeout(8000) },
+      );
+      if (
+        ticket === healthSequence.current &&
+        scope === activeConversation.current
+      )
+        setHealth(result);
+    } catch {
+      if (
+        ticket === healthSequence.current &&
+        scope === activeConversation.current
+      )
+        setHealth(null);
+    }
+  }, []);
   useEffect(() => {
     if (!auth) return;
+    setHealth(null);
     api("/settings")
       .then(setPrefs)
       .catch((e) => setError(e.message));
     void refreshHistory();
-    const check = () =>
-      !document.hidden &&
-      api(
-        "/health" +
-          (conversation
-            ? "?conversation_id=" + encodeURIComponent(conversation)
-            : ""),
-      )
-        .then(setHealth)
-        .catch(() => setHealth(null));
+    const check = () => {
+      if (!document.hidden) void refreshHealth();
+    };
     void check();
     const timer = setInterval(check, 15000);
     window.addEventListener("saly-model-changed", check);
@@ -327,7 +347,7 @@ function App() {
       clearInterval(timer);
       window.removeEventListener("saly-model-changed", check);
     };
-  }, [auth, conversation]);
+  }, [auth, conversation, refreshHealth]);
   useEffect(() => {
     bottom.current?.scrollIntoView({
       behavior: matchMedia("(prefers-reduced-motion: reduce)").matches
@@ -362,7 +382,7 @@ function App() {
   async function send(e: React.FormEvent, forced?: string) {
     e.preventDefault();
     const draft = forced ?? input;
-    if (!draft.trim() || busy) return;
+    if (!draft.trim() || busy || modelPending) return;
     if (health?.provider !== "ollama" && !prefs?.privacy.remoteConsent) {
       if (
         !prefs ||
@@ -766,7 +786,6 @@ function App() {
                       <h1>
                         Olá. Eu sou <em>Saly.</em>
                       </h1>
-                      <p>Um espaço para suas ideias crescerem.</p>
                     </div>
                     <div className="hero-status">
                       <span className={`status ${state}`}>
@@ -796,17 +815,9 @@ function App() {
                   >
                     <LocalModels
                       conversation={conversation}
-                      busy={busy}
-                      notify={setError}
-                      changed={() => {
-                        void api(
-                          "/health" +
-                            (conversation
-                              ? "?conversation_id=" +
-                                encodeURIComponent(conversation)
-                              : ""),
-                        ).then(setHealth);
-                      }}
+                      busy={busy || modelPending}
+                      changed={refreshHealth}
+                      pendingChanged={setModelPending}
                     />
                     <div className="messages" aria-live="polite">
                       {messages.map((m, i) => (
@@ -1128,7 +1139,10 @@ function App() {
                         <button
                           className="send"
                           disabled={
-                            busy || !input.trim() || !health?.model_ready
+                            busy ||
+                            modelPending ||
+                            !input.trim() ||
+                            !health?.model_ready
                           }
                           aria-label="Enviar mensagem"
                         >
@@ -1346,6 +1360,10 @@ function App() {
                       </div>
                       <SettingsPanel
                         section={section}
+                        conversation={conversation}
+                        modelBusy={busy || modelPending}
+                        modelChanged={refreshHealth}
+                        modelPendingChanged={setModelPending}
                         prefs={prefs}
                         save={save}
                         health={health}
