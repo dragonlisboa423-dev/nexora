@@ -39,7 +39,8 @@ except (OSError,ValueError): pass
 print(available)
 CHECK
 )"
-[[ "$saly_available" -ge 6442450944 ]] || { echo 'Menos de 6 GiB de RAM efetivamente livres: runtime instalado, modelos pendentes por recursos. Não alterei seu plano.'; exit 1; }
+echo "RAM efetivamente disponível: $((saly_available / 1024 / 1024)) MiB; mínimo para tentar os modelos: 5120 MiB."
+[[ "$saly_available" -ge 5368709120 ]] || { echo 'Menos de 5 GiB de RAM efetivamente livres: runtime instalado, modelos pendentes por recursos. Não alterei seu plano.'; exit 1; }
 # Explicit sequential pulls, never parallel and never automatic paid fallback.
 for saly_model in granite4:3b phi4-mini; do
   saly_free="$(df -Pk . | awk 'NR==2 {print $4}')"

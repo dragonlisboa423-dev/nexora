@@ -1,5 +1,11 @@
 # SALY — atualização integrada (19/11/2026)
 
+## Ajuste de RAM para o Codespace de 8 GiB
+
+O diagnóstico enviado pelo proprietário mostrou 7,8 GiB totais e 5,9 GiB disponíveis, com `memory.max=max`. O piso inicial do instalador passou de 6 para **5 GiB efetivamente livres** para permitir a tentativa dos dois modelos compactos, Granite 4 3B e Phi-4 Mini. O cálculo continua usando `MemAvailable` e o espaço restante do cgroup quando houver limite; o script imprime o valor em MiB. Não usa apenas a coluna `free`, pois cache recuperável também pode estar disponível.
+
+Esse piso habilita a tentativa de instalação e não certifica que ambos geram com a carga atual do servidor. Permanecem downloads sequenciais, um modelo carregado/uma geração por vez, `keep_alive=0`, descarregamento e teste textual nativo separado por modelo. Não houve aumento de plano, remoção de arquivos ou mudança do contexto de inferência. As menções a 6 GiB abaixo pertencem à auditoria anterior. Para receber o ajuste: `git pull --ff-only` e `bash scripts/setup-ollama.sh`.
+
 ## Ajuste posterior: baixar apenas dois modelos
 
 Por solicitação do proprietário, `scripts/setup-ollama.sh` agora baixa somente **granite4:3b** e **phi4-mini**, sequencialmente. São dois modelos de texto compactos, escolhidos para reduzir armazenamento; não se afirma desempenho comparado sem teste. O mínimo inicial de disco passou de 17 para **10 GiB livres** (pesos estimados em aproximadamente 5 GiB, runtime temporário e reserva); permanece a verificação de 7 GiB antes de cada download e de 6 GiB de RAM efetivamente livres. Não são apagados modelos ou arquivos existentes. O diagnóstico nativo também testa somente esses dois por padrão. A compatibilidade do seletor com os demais IDs foi preservada, sem baixá-los automaticamente.
