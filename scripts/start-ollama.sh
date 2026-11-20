@@ -22,7 +22,7 @@ chmod 600 "$saly_runtime/server.log"
 # Only loopback; no public forwarding. A single loaded model and a single generation.
 nohup env -i PATH=/usr/bin:/bin HOME="$saly_runtime/home" OLLAMA_HOST=127.0.0.1:11434 \
   OLLAMA_MODELS="$saly_runtime/models" OLLAMA_NUM_PARALLEL=1 OLLAMA_MAX_LOADED_MODELS=1 \
-  OLLAMA_KEEP_ALIVE=0 OLLAMA_CONTEXT_LENGTH=8192 OLLAMA_NO_CLOUD=1 \
+  OLLAMA_KEEP_ALIVE=5m OLLAMA_CONTEXT_LENGTH=8192 OLLAMA_NO_CLOUD=1 \
   "$saly_binary" serve >>"$saly_runtime/server.log" 2>&1 </dev/null &
 printf '%s\n' "$!" > "$saly_runtime/server.pid"
 chmod 600 "$saly_runtime/server.pid"

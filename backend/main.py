@@ -52,6 +52,7 @@ from .voices import router as voices_router
 @asynccontextmanager
 async def lifespan(app):
     store.initialize()
+    ollama.configure_primary()
     activate_core()
     if os.environ.get("SALY_DISABLE_BIOLOGY_SEED") != "1":
         ensure_biology_draft()
@@ -140,7 +141,9 @@ class BodyLimitMiddleware:
 
 app.add_middleware(BodyLimitMiddleware)
 provider = Provider()
-LOCAL_CHAT_TIMEOUT_SECONDS = 240
+LOCAL_CHAT_TIMEOUT_SECONDS = max(
+    60, min(1800, int(os.environ.get("SALY_LOCAL_CHAT_TIMEOUT_SECONDS", "600")))
+)
 
 
 @app.exception_handler(ValueError)

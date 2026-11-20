@@ -13,6 +13,7 @@ from backend.llm import ollama
 
 @pytest.fixture
 def native(client, monkeypatch):
+    store.set_setting("llm_default", "granite4:3b")
     state = {
         "digest": "d1",
         "body": b'{"message":{"content":"Resposta controlada."},"done":true}\n',
@@ -65,10 +66,11 @@ def test_first_installed_message_allowed_and_proves_generation(client, native):
     assert "Uma mensagem privada" not in str(proof)
     assert not main.settings(True)["privacy"]["remoteConsent"]
     assert native["calls"].count("/api/chat") == 1
-    assert "/api/generate" in native["calls"]
+    assert "/api/generate" not in native["calls"]
 
 
 def test_explicit_remote_choice_and_configured_remote_never_autoswitch(client, native, monkeypatch):
+    store.set_setting("llm_default", "remote")
     monkeypatch.setattr(main.provider, "key", "controlled-test-key")
     assert client.get("/api/local-models").json()["selected"] == "remote"
     monkeypatch.setattr(main.provider, "key", "")

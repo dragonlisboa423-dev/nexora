@@ -108,7 +108,7 @@ def test_local_native_stream_release_and_catalog_truth(client, monkeypatch):
         if request.url.path == "/api/tags":
             return httpx.Response(
                 200,
-                json={"models": [{"name": "phi4-mini:latest", "digest": "sha-test", "size": 2500}]},
+                json={"models": [{"name": "qwen2.5:3b", "digest": "sha-test", "size": 2500}]},
             )
         if request.url.path == "/api/show":
             return httpx.Response(200, json={"capabilities": ["completion", "tools"]})
@@ -118,14 +118,15 @@ def test_local_native_stream_release_and_catalog_truth(client, monkeypatch):
 
     mock_ollama(monkeypatch, handler)
     catalog = client.get("/api/local-models").json()
-    assert catalog["models"][2]["status"] == "installed_unverified"
-    assert catalog["models"][0]["status"] == "not_installed"
-    probe = client.post("/api/local-models/probe", json={"model": "phi4-mini"})
+    assert catalog["models"][0]["status"] == "installed_unverified"
+    assert catalog["models"][2]["status"] == "not_installed"
+    probe = client.post("/api/local-models/probe", json={"model": "qwen2.5:3b"})
     assert probe.status_code == 200 and probe.json()["response"] == "Quatro."
     assert not probe.json()["capabilities"]["tools_verified"]
-    assert client.get("/api/local-models").json()["models"][2]["status"] == "ready"
+    assert client.get("/api/local-models").json()["models"][0]["status"] == "ready"
     chat = next(body for path, body in seen if path == "/api/chat")
-    assert chat["keep_alive"] == 0 and any(path == "/api/generate" for path, _ in seen)
+    assert chat["keep_alive"] == 300
+    assert not any(path == "/api/generate" for path, _ in seen)
     assert "tools" not in chat
 
 
@@ -143,13 +144,13 @@ def test_switch_same_conversation_keeps_history_and_actual_reply_model(client, m
 
     monkeypatch.setattr(ollama.Ollama, "capabilities", capabilities)
     monkeypatch.setattr(ollama.Ollama, "stream", stream)
-    assert client.put("/api/local-models/selection", json={"model": "phi4-mini"}).status_code == 200
+    assert client.put("/api/local-models/selection", json={"model": "qwen2.5:3b"}).status_code == 200
     # Consent remains false; local inference does not send to remote embeddings/providers.
     assert not main.settings(True)["privacy"]["remoteConsent"]
     first = client.post("/api/chat", json={"message": "Primeira pergunta."})
     events = [json.loads(line) for line in first.text.splitlines()]
     cid = events[0]["conversation_id"]
-    assert events[-1]["model"] == "phi4-mini"
+    assert events[-1]["model"] == "qwen2.5:3b"
     assert (
         client.put(
             "/api/local-models/selection", json={"model": "gemma3:4b", "conversation_id": cid}
@@ -160,7 +161,7 @@ def test_switch_same_conversation_keeps_history_and_actual_reply_model(client, m
     assert json.loads(second.text.splitlines()[-1])["model"] == "gemma3:4b"
     assert any(m["content"] == "Primeira pergunta." for m in turns[-1])
     records = main.messages(cid, True)
-    assert [m["model"] for m in records if m["role"] == "assistant"] == ["phi4-mini", "gemma3:4b"]
+    assert [m["model"] for m in records if m["role"] == "assistant"] == ["qwen2.5:3b", "gemma3:4b"]
     assert (
         client.put("/api/local-models/selection", json={"model": "arbitrary-host"}).status_code
         == 422

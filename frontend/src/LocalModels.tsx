@@ -118,9 +118,7 @@ export function LocalModels({
           <option value="remote">Provedor remoto configurado</option>
           {data?.models
             .filter(
-              (m) =>
-                ["granite4:3b", "phi4-mini", data.selected].includes(m.id) ||
-                m.digest,
+              (m) => ["qwen2.5:3b", data.selected].includes(m.id) || m.digest,
             )
             .map((m) => (
               <option key={m.id} value={m.id}>
@@ -149,8 +147,8 @@ export function LocalModels({
       )}
       {data?.selected === "remote" && data.remote_configured === false && (
         <p className="model-availability">
-          Provedor remoto sem configuração. Escolha um modelo local instalado
-          para conversar sem chave de API.
+          Provedor remoto sem configuração. Escolha Qwen ou outro modelo local
+          instalado para conversar sem chave de API.
         </p>
       )}
       {local && selected?.status !== "ready" && (

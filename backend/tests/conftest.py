@@ -25,6 +25,7 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setenv("SALY_CF_WORKERS_FREE_CONFIRMED", "0")
     security.ATTEMPTS.clear()
     with TestClient(main.app) as c:
+        store.set_setting("llm_default", "remote")
         security.set_owner("test-private-owner-123")
         assert (
             c.post("/api/auth/login", json={"password": "test-private-owner-123"}).status_code

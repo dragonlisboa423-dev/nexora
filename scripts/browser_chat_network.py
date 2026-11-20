@@ -28,7 +28,7 @@ class Model(BaseHTTPRequestHandler):
             pass  # Expected when the disconnected chat cancels its provider request.
 
     def do_GET(self):
-        self.reply({"models": [{"name": "granite4:3b", "digest": "controlled", "size": 1}]})
+        self.reply({"models": [{"name": "qwen2.5:3b", "digest": "controlled", "size": 1}]})
 
     def do_POST(self):
         self.rfile.read(int(self.headers.get("Content-Length", 0)))
@@ -137,7 +137,7 @@ with (
     page.get_by_label("Senha privada", exact=True).fill(PASSWORD)
     page.get_by_role("button", name="Desbloquear", exact=True).click()
     selector = page.get_by_label("Modelo da conversa", exact=True)
-    expect(selector).to_have_value("granite4:3b")
+    expect(selector).to_have_value("qwen2.5:3b")
     textarea = page.get_by_placeholder("Compartilhe uma ideia com Saly…")
     textarea.fill("Pergunta de teste com carga lenta.")
     send = page.get_by_role("button", name="Enviar mensagem", exact=True)

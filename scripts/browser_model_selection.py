@@ -31,12 +31,18 @@ class OllamaFixture(BaseHTTPRequestHandler):
         self.wfile.write(raw)
 
     def do_GET(self):
+        if self.path == "/api/version":
+            self.reply({"version": "controlled-protocol"})
+            return
+        if self.path == "/api/version":
+            self.reply({"version": "controlled-protocol-fixture"})
+            return
         assert self.path == "/api/tags"
         self.reply(
             {
                 "models": [
                     {"name": name, "digest": "fixture-" + name, "size": 1}
-                    for name in ("phi4-mini:latest", "granite4:3b")
+                    for name in ("qwen2.5:3b", "gemma3:4b")
                 ]
             }
         )
@@ -102,28 +108,30 @@ with (
     selector = page.get_by_label("Modelo da conversa", exact=True)
     expect(selector).to_be_visible()  # No collapsed details, on desktop or phone.
     expect(selector).to_be_enabled()
-    expect(selector).to_have_value("granite4:3b")
+    expect(selector).to_have_value("qwen2.5:3b")
     health = page.request.get(base + "/api/health").json()
     assert health["can_chat"] and not health["model_ready"]
-    selector.select_option("phi4-mini")
+    selector.select_option("qwen2.5:3b")
     expect(selector).to_be_enabled()
-    expect(selector).to_have_value("phi4-mini")
+    expect(selector).to_have_value("qwen2.5:3b")
     expect(page.locator(".model-availability")).to_contain_text("Modelo instalado")
     # Installed-but-unverified must permit the first real chat request, without a probe.
-    page.get_by_placeholder("Compartilhe uma ideia com Saly…").fill("Primeira pergunta de teste.")
+    page.get_by_placeholder("Compartilhe uma ideia com Saly…").fill(
+        "Explique quimicamente a molécula de água e suas propriedades."
+    )
     send = page.get_by_role("button", name="Enviar mensagem", exact=True)
     expect(send).to_be_enabled()
     send.click()
     expect(selector).to_be_disabled()
     expect(page.locator(".message.assistant .markdown")).to_have_text(
-        "Resposta controlada de teste: phi4-mini"
+        "Resposta controlada de teste: qwen2.5:3b"
     )
     expect(selector).to_be_enabled()
     cid = page.request.get(base + "/api/conversations").json()[0]["id"]
     go(page, "Configurações")
     page.get_by_role("link", name="Sistema", exact=True).click()
     selector = page.get_by_label("Modelo da conversa", exact=True)
-    expect(selector).to_have_value("phi4-mini")
+    expect(selector).to_have_value("qwen2.5:3b")
     # A refused save must be visible and must not pretend the new choice was stored.
     page.route(
         "**/api/local-models/selection",
@@ -133,22 +141,22 @@ with (
             body=json.dumps({"detail": "Falha controlada ao salvar"}),
         ),
     )
-    selector.select_option("granite4:3b")
+    selector.select_option("gemma3:4b")
     expect(page.locator(".local-models [role=alert]")).to_contain_text("Falha controlada ao salvar")
     expect(selector).to_be_enabled()
-    expect(selector).to_have_value("phi4-mini")
+    expect(selector).to_have_value("qwen2.5:3b")
     page.unroute("**/api/local-models/selection")
-    selector.select_option("granite4:3b")
+    selector.select_option("gemma3:4b")
     expect(selector).to_be_enabled()
     choice = page.request.get(base + "/api/local-models?conversation_id=" + cid).json()
-    assert choice["selected"] == "granite4:3b" and choice["default"] == "phi4-mini", choice
+    assert choice["selected"] == "gemma3:4b" and choice["default"] == "qwen2.5:3b", choice
     # The installer's CLI writes the same readiness consumed by the live application.
     report = Path(directory) / "probe.json"
     result = subprocess.run(
         [
             sys.executable,
             str(ROOT / "scripts/probe-ollama.py"),
-            "granite4:3b",
+            "gemma3:4b",
             "--report",
             str(report),
         ],
@@ -164,7 +172,7 @@ with (
         timeout=20,
     )
     assert result.returncode == 0, result.stdout + result.stderr
-    assert "Testando geração local" in result.stdout
+    assert "Testando gemma3:4b" in result.stdout
     assert json.loads(report.read_text())["models"][0]["status"] == "functional"
     assert page.request.get(base + "/api/health?conversation_id=" + cid).json()["model_ready"]
     page.locator(".model-options summary").click()
@@ -174,35 +182,40 @@ with (
     page.get_by_role("navigation", name="Áreas principais", exact=True).get_by_role(
         "link", name="Conversa", exact=True
     ).click()
-    expect(selector).to_have_value("granite4:3b")
+    expect(selector).to_have_value("gemma3:4b")
     page.get_by_placeholder("Compartilhe uma ideia com Saly…").fill("Segunda pergunta de teste.")
     expect(send).to_be_enabled()
     send.click()
     expect(page.locator(".message.assistant .markdown").last).to_have_text(
-        "Resposta controlada de teste: granite4:3b"
+        "Resposta controlada de teste: gemma3:4b"
     )
     expect(selector).to_be_enabled()
     messages = page.request.get(base + "/api/conversations/" + cid).json()
     assert [m["model"] for m in messages if m["role"] == "assistant"] == [
-        "phi4-mini",
-        "granite4:3b",
+        "qwen2.5:3b",
+        "gemma3:4b",
     ]
     actual = [
         call for call in CALLS if call["messages"][-1]["content"] == "Segunda pergunta de teste."
     ][-1]
-    assert any(turn["content"] == "Primeira pergunta de teste." for turn in actual["messages"])
+    assert any(
+        turn["content"] == "Explique quimicamente a molécula de água e suas propriedades."
+        for turn in actual["messages"]
+    )
     # Reload and reopen the saved history; per-conversation choice and both replies survive.
     page.reload()
-    expect(selector).to_have_value("phi4-mini")
+    expect(selector).to_have_value("qwen2.5:3b")
     page.get_by_role("button", name="Histórico de conversas", exact=True).click()
-    page.get_by_role("button", name="Primeira pergunta de teste.", exact=True).click()
-    expect(selector).to_have_value("granite4:3b")
+    page.get_by_role(
+        "button", name="Explique quimicamente a molécula de água e suas propriedades.", exact=True
+    ).click()
+    expect(selector).to_have_value("gemma3:4b")
     expect(page.locator(".message.assistant")).to_have_count(2)
     page.set_viewport_size({"width": 390, "height": 844})
     expect(selector).to_be_visible()
-    selector.select_option("phi4-mini")
+    selector.select_option("qwen2.5:3b")
     expect(selector).to_be_enabled()
-    expect(selector).to_have_value("phi4-mini")
+    expect(selector).to_have_value("qwen2.5:3b")
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth + 1")
     page.screenshot(path="/tmp/saly-model-selection-mobile.png", full_page=True)
     assert not errors, errors

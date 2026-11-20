@@ -2,7 +2,7 @@
 
 Assistente pessoal de **proprietária única**, com memória global persistente, documentos privados, núcleo líquido bioluminescente e agente com ferramentas e aprovações. React/TypeScript/Vite/Three.js no frontend; FastAPI e SQLAlchemy no backend. PostgreSQL/pgvector para implantação; SQLite para desenvolvimento sem serviços externos.
 
-Não existe cadastro público, seleção de contas ou memória por usuário. Um único modelo generativo remoto é configurado no servidor; **não há geração local nem resposta fictícia quando o provedor está indisponível**.
+Não existe cadastro público, seleção de contas ou memória por usuário. O modelo de conversa local padrão é **Qwen 2.5 3B via Ollama no servidor**, quando instalado; Gemma pode ser usado como alternativa. O provedor remoto continua opcional. Modelo ausente ou falha de geração não produzem respostas fictícias. Veja a [auditoria do Qwen, instalação e benchmark](docs/SALY_QWEN_SWITCH.md); a variante antiga Qwen 2.5 3B não foi confirmada no Git.
 
 A aplicação e suas ferramentas locais foram implementadas e testadas. Inferência com um provedor real, qualidade de embeddings reais e hospedagem Supabase ainda dependem de credenciais/serviços que não foram fornecidos. Veja [validação](docs/validation.md) e o [relatório técnico](docs/delivery.md); isso não é uma afirmação de que todos os critérios finais já foram atendidos.
 
@@ -37,7 +37,7 @@ cp -n .env.example .env
 chmod 600 .env
 ```
 
-Edite `.env` no servidor. Defina a chave e o modelo do provedor em campos privados; não cole chaves em chats, documentos ou código. Configure o desbloqueio privado da proprietária pelo terminal:
+Para o provedor remoto opcional, edite `.env` no servidor e defina chave e modelo em campos privados; não cole chaves em chats, documentos ou código. Configure o desbloqueio privado da proprietária pelo terminal:
 
 ```bash
 .venv/bin/python -m backend.manage owner
@@ -48,7 +48,15 @@ O comando `owner` pede uma senha de pelo menos 12 caracteres de forma oculta. N�
 
 Para HTTP em computador local, use `SALY_SECURE_COOKIE=0`. Em HTTPS/produção, use `1`. Não exponha uma implantação sem HTTPS e acesso privado configurado. `.env` é lido pelo backend, CLI e servidor sem substituir variáveis já injetadas no processo.
 
-## Conectar o modelo e o agente em um comando
+## Preparar Qwen local
+
+```bash
+bash scripts/setup-ollama.sh
+```
+
+O runtime local não exige chave de API. O instalador baixa Qwen 2.5 3B e tenta Gemma opcionalmente, conforme recursos, e registra o teste real da molécula de água quando consegue gerar. Phi foi retirado do seletor sem excluir seus dados/pesos antigos. Reutiliza-se o modelo por cinco minutos após respostas completas. A execução continua sujeita aos recursos/franquia do Codespace, sem alterar plano ou ativar APIs pagas.
+
+## Conectar o provedor remoto e agente em um comando
 
 No terminal privado do Codespaces, com a instalação concluída:
 

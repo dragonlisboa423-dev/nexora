@@ -2,6 +2,8 @@
 
 import asyncio
 import json
+import os
+import socket
 import time
 
 import httpx
@@ -9,7 +11,14 @@ import httpx
 from .. import storage as store
 from .provider import ProviderError
 
-MODELS = ("granite4:3b", "ministral-3:3b", "phi4-mini", "gemma3:4b")
+PRIMARY = "qwen2.5:3b"
+SECONDARY = "gemma3:4b"
+RETIRED = "phi4-mini"
+MODELS = (PRIMARY, SECONDARY, "granite4:3b", "ministral-3:3b")
+WATER_QUESTION = "Explique quimicamente a molécula de água e suas propriedades."
+KEEP_ALIVE_SECONDS = max(
+    30, min(1800, int(os.environ.get("SALY_OLLAMA_KEEP_ALIVE_SECONDS", "300")))
+)
 LOCK = asyncio.Lock()
 BASE = "http://127.0.0.1:11434"
 
@@ -17,18 +26,29 @@ BASE = "http://127.0.0.1:11434"
 def client():
     return httpx.AsyncClient(
         base_url=BASE,
-        timeout=httpx.Timeout(180, connect=2),
+        timeout=httpx.Timeout(300, connect=2),
         follow_redirects=False,
         trust_env=False,
     )
 
 
+def configure_primary():
+    """Apply the requested primary once, preserving prior preference as metadata."""
+    with store.transaction():
+        if not store.setting("qwen_primary_v1", {}).get("applied"):
+            previous = store.setting("llm_default")
+            store.set_setting("llm_default", PRIMARY)
+            store.set_setting("qwen_primary_v1", {"applied": True, "previous_default": previous})
+
+
 def selection(conversation=None):
-    value = (conversation or {}).get("llm_choice", store.setting("llm_default", "remote"))
-    return value if value in (*MODELS, "remote") else "remote"
+    value = (conversation or {}).get("llm_choice") or store.setting("llm_default") or PRIMARY
+    # Old conversation choices are remapped; historical message model labels stay intact.
+    return value if value in (*MODELS, "remote") else PRIMARY
 
 
-async def catalog():
+async def catalog(*, include_retired=False):
+    model_ids = (*MODELS, RETIRED) if include_retired else MODELS
     try:
         async with client() as c:
             r = await c.get("/api/tags", timeout=3)
@@ -37,7 +57,7 @@ async def catalog():
             if not isinstance(tags, list) or not all(isinstance(item, dict) for item in tags):
                 raise ValueError("Catálogo local incompatível")
         result = []
-        for name in MODELS:
+        for name in model_ids:
             item = next((m for m in tags if m.get("name") in (name, name + ":latest")), None)
             probe = store.setting("ollama_probe:" + name, {})
             verified = bool(item and probe.get("digest") == item.get("digest") and probe.get("ok"))
@@ -61,29 +81,13 @@ async def catalog():
         status = (
             "server_offline" if isinstance(error, httpx.ConnectError) else "communication_error"
         )
-        return {"server": status, "models": [{"id": n, "status": status} for n in MODELS]}
+        return {"server": status, "models": [{"id": n, "status": status} for n in model_ids]}
 
 
 async def resolve_selection(conversation=None, *, remote_configured=False, inventory=None):
-    """Choose an installed compact local model only for a fresh, unconfigured profile.
-
-    Explicit choices (including remote) never fall back to another provider.
-    A catalog lookup does not perform inference or certify generation.
-    """
-    explicit = (conversation or {}).get("llm_choice")
-    default = store.setting("llm_default")
-    if explicit in (*MODELS, "remote") or default in (*MODELS, "remote"):
-        return selection(conversation)
-    if remote_configured:
-        return "remote"
-    info = inventory if inventory is not None else await catalog()
-    compact = [
-        m for m in info["models"] if m["id"] in ("granite4:3b", "phi4-mini") and m.get("digest")
-    ]
-    return next(
-        (m["id"] for m in compact if m["status"] == "ready"),
-        compact[0]["id"] if compact else "remote",
-    )
+    # Defaults are choices, not availability claims. Never fall back from Qwen
+    # to a different local/remote model if its weights/server are unavailable.
+    return selection(conversation)
 
 
 def record_failure(model, digest, error):
@@ -112,14 +116,15 @@ class Ollama:
     local = True
     last_probe = None
 
-    def __init__(self, model):
-        if model not in MODELS:
+    def __init__(self, model, *, diagnostic_only=False):
+        if model not in MODELS and not (diagnostic_only and model == RETIRED):
             raise ValueError("Modelo local não permitido")
         self.model = model
+        self.diagnostic_only = diagnostic_only
         self.supports_tools = False
 
     async def health(self):
-        info = await catalog()
+        info = await catalog(include_retired=self.diagnostic_only)
         item = next(m for m in info["models"] if m["id"] == self.model)
         return {
             "model": self.model,
@@ -139,6 +144,13 @@ class Ollama:
                 item["status"],
                 "Não foi possível confirmar a geração local. Confira o Ollama antes de tentar novamente.",
             ),
+            "runtime": {
+                "kind": "ollama-server-local",
+                "endpoint": BASE,
+                "hostname": socket.gethostname(),
+                "codespace": os.environ.get("CODESPACE_NAME"),
+                "keep_alive_seconds": KEEP_ALIVE_SECONDS,
+            },
             "local": item,
         }
 
@@ -164,22 +176,29 @@ class Ollama:
             ) from e
 
     async def stream(self, messages, tools=None, **kwargs):
+        started = time.monotonic()
         async with LOCK:  # One request/model loaded at a time, including probes.
-            started = time.monotonic()
-            info = next(m for m in (await catalog())["models"] if m["id"] == self.model)
+            info = next(
+                m
+                for m in (await catalog(include_retired=self.diagnostic_only))["models"]
+                if m["id"] == self.model
+            )
             digest = info.get("digest")
             # No tool schema is sent until this particular model has been functionally verified.
             payload = {
                 "model": self.model,
                 "messages": messages,
                 "stream": True,
-                "keep_alive": 0,
+                "keep_alive": KEEP_ALIVE_SECONDS,
                 "options": {
                     "num_ctx": 8192,
                     "num_predict": min(kwargs.get("max_tokens") or 1400, 1400),
                     "num_thread": 4,
                 },
             }
+            completed = False
+            first_token_seconds = None
+            metrics = {}
             try:
                 if not digest:
                     raise ProviderError(
@@ -208,10 +227,23 @@ class Ollama:
                             raise TypeError("Invalid local message")
                         text = message.get("content", "")
                         if text:
+                            if first_token_seconds is None and text.strip():
+                                first_token_seconds = round(time.monotonic() - started, 4)
                             text_received = text_received or bool(text.strip())
                             yield {"text": text}
                         if event.get("done") is True:
                             done = True
+                            metrics = {
+                                key: event[key]
+                                for key in (
+                                    "load_duration",
+                                    "prompt_eval_count",
+                                    "eval_count",
+                                    "eval_duration",
+                                    "done_reason",
+                                )
+                                if key in event
+                            }
                             # Verification is recorded only after a complete, nonempty stream.
                             # A thinking-only or empty result cannot certify chat readiness.
                     if not done:
@@ -223,17 +255,25 @@ class Ollama:
                     raise ProviderError(
                         502, "O modelo não entregou texto. Nenhuma resposta foi simulada."
                     )
-                current = next(m for m in (await catalog())["models"] if m["id"] == self.model)
+                current = next(
+                    m
+                    for m in (await catalog(include_retired=self.diagnostic_only))["models"]
+                    if m["id"] == self.model
+                )
                 if current.get("digest") == digest:
                     self.last_probe = {
                         "ok": True,
                         "digest": digest,
                         "seconds": round(time.monotonic() - started, 3),
+                        "first_token_seconds": first_token_seconds,
+                        "runtime_metrics": metrics,
+                        "keep_alive_seconds": KEEP_ALIVE_SECONDS,
                         "capabilities": caps,
                         "scope": "Geração textual concluída. Não verifica ferramentas, visão ou correção factual.",
                     }
                     # Never retain the user's message/answer in a readiness diagnostic.
                     store.set_setting("ollama_probe:" + self.model, self.last_probe)
+                completed = True
                 yield {"done": True}
             except ProviderError as error:
                 record_failure(self.model, digest, error)
@@ -250,34 +290,46 @@ class Ollama:
                 record_failure(self.model, digest, error)
                 raise error from e
             finally:
-                # Cancellation closes the HTTP stream, then explicitly requests release of weights.
-                try:
-                    async with client() as c:
-                        await c.post(
-                            "/api/generate", json={"model": self.model, "keep_alive": 0}, timeout=3
-                        )
-                except httpx.HTTPError:
-                    pass
+                # Completed responses keep one model warm for reuse. Failures and
+                # cancellation release it; the server evicts on a different model.
+                if not completed:
+                    try:
+                        async with client() as c:
+                            await c.post(
+                                "/api/generate",
+                                json={"model": self.model, "keep_alive": 0},
+                                timeout=3,
+                            )
+                    except httpx.HTTPError:
+                        pass
 
 
-async def probe(model):
+async def probe(model, *, question=None, diagnostic_only=False):
     """The UI and installer share this actual generation + digest-bound record."""
-    adapter = Ollama(model)
+    adapter = Ollama(model, diagnostic_only=diagnostic_only)
     text = ""
+    characters = 0
     async for event in adapter.stream(
         [
             {
                 "role": "user",
-                "content": "Responda em português: quanto é 2 + 2? Explique em uma frase.",
+                "content": question
+                or "Responda em português: quanto é 2 + 2? Explique em uma frase.",
             }
         ],
-        max_tokens=96,
+        max_tokens=512 if question else 96,
     ):
-        text = (text + event.get("text", ""))[:2000]
+        characters += len(event.get("text", ""))
+        text = (text + event.get("text", ""))[:16000]
     if not adapter.last_probe:
         raise ProviderError(
             409, "O modelo mudou durante o teste. Atualize a lista e tente novamente."
         )
-    result = {**adapter.last_probe, "response": text}
+    result = {
+        **adapter.last_probe,
+        "model": model,
+        "response": text,
+        "response_truncated": characters > len(text),
+    }
     store.set_setting("ollama_probe:" + model, result)
     return result

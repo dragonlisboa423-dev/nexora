@@ -9,7 +9,7 @@ done
 [[ "$(uname -s)" == Linux ]] || { echo 'Instalação automática disponível somente para Linux.'; exit 1; }
 case "$(uname -m)" in x86_64) saly_arch=amd64;; aarch64) saly_arch=arm64;; *) echo 'Arquitetura não suportada'; exit 1;; esac
 saly_free="$(df -Pk . | awk 'NR==2 {print $4}')"
-[[ "$saly_free" -gt 10485760 ]] || { echo 'Reserve pelo menos 10 GiB livres para runtime, dois modelos (~5 GiB estimados) e margem. Nenhum arquivo foi apagado.'; exit 1; }
+[[ "$saly_free" -gt 7340032 ]] || { echo 'Reserve pelo menos 7 GiB livres para runtime, Qwen 2.5 3B e margem; Gemma será opcional. Nenhum arquivo foi apagado.'; exit 1; }
 echo "Arquitetura: $saly_arch; espaço livre: $saly_free KiB; limite de memória cgroup: $(cat /sys/fs/cgroup/memory.max 2>/dev/null || echo desconhecido)."
 mkdir -p .tools/ollama/runtime
 if [[ ! -x .tools/ollama/runtime/bin/ollama ]] && ! command -v ollama >/dev/null; then
@@ -42,11 +42,19 @@ CHECK
 echo "RAM efetivamente disponível: $((saly_available / 1024 / 1024)) MiB; mínimo para tentar os modelos: 5120 MiB."
 [[ "$saly_available" -ge 5368709120 ]] || { echo 'Menos de 5 GiB de RAM efetivamente livres: runtime instalado, modelos pendentes por recursos. Não alterei seu plano.'; exit 1; }
 # Explicit sequential pulls, never parallel and never automatic paid fallback.
-for saly_model in granite4:3b phi4-mini; do
+for saly_model in qwen2.5:3b gemma3:4b; do
   saly_free="$(df -Pk . | awk 'NR==2 {print $4}')"
-  [[ "$saly_free" -gt 7340032 ]] || { echo "Pendente $saly_model: menos de 7 GiB livres (peso + reserva)."; exit 1; }
+  if [[ "$saly_free" -le 7340032 ]]; then
+    echo "Pendente $saly_model: menos de 7 GiB livres (peso + reserva)."
+    [[ "$saly_model" == gemma3:4b ]] && continue
+    exit 1
+  fi
   echo "Baixando/verificando $saly_model (gratuito local; sujeito à cota de computação do seu Codespaces)."
-  OLLAMA_HOST=127.0.0.1:11434 "$saly_binary" pull "$saly_model" || { echo 'Download bloqueado/falhou; próximos modelos continuam pendentes. Nenhuma alternativa paga foi ativada.'; exit 1; }
+  if ! OLLAMA_HOST=127.0.0.1:11434 "$saly_binary" pull "$saly_model"; then
+    echo "Download de $saly_model indisponível; nenhum provedor alternativo foi ativado."
+    [[ "$saly_model" == gemma3:4b ]] && continue
+    exit 1
+  fi
 done
 # Native generation, one model at a time, recorded separately from mere installation.
-.venv/bin/python scripts/probe-ollama.py
+.venv/bin/python scripts/probe-ollama.py qwen2.5:3b

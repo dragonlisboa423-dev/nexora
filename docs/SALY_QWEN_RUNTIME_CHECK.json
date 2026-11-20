@@ -1,0 +1,26 @@
+{
+  "models": [
+    {
+      "model": "phi4-mini",
+      "status": "not_installed",
+      "samples": [],
+      "detail": "Modelo ausente ou servidor indisponível; nenhum download iniciado."
+    },
+    {
+      "model": "qwen2.5:3b",
+      "status": "not_installed",
+      "samples": [],
+      "detail": "Modelo ausente ou servidor indisponível; nenhum download iniciado."
+    }
+  ],
+  "question": "Explique quimicamente a molécula de água e suas propriedades.",
+  "runtime": {
+    "version": "0.40.16"
+  },
+  "environment": {
+    "hostname": "0abddb8c8c09",
+    "endpoint": "http://127.0.0.1:11434",
+    "codespace": null
+  },
+  "scope": "Geração real pelo Ollama local; não mede latência do navegador/RAG nem verifica exatidão científica."
+}
